@@ -4,6 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>لوحة تحكم لزقة أمان</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <style>
   :root{
     --primary:#0b6b52;
@@ -35,7 +39,6 @@
   input,select,textarea{font-family:inherit;}
   a{color:inherit;text-decoration:none;}
 
-  /* ===== Login ===== */
   .login-wrap{
     min-height:100vh;
     display:flex;align-items:center;justify-content:center;
@@ -83,7 +86,6 @@
   }
   .login-error.show{display:block;}
 
-  /* ===== Layout ===== */
   .app{display:none;min-height:100vh;}
   .app.show{display:flex;}
 
@@ -154,12 +156,10 @@
     font-size:.85rem;color:var(--muted);
   }
 
-  /* ===== Page ===== */
   .page{display:none;}
   .page.active{display:block;animation:fade .2s;}
   @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
 
-  /* ===== Cards ===== */
   .stats-grid{
     display:grid;
     grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
@@ -209,6 +209,7 @@
   .table-wrap{
     background:#fff;border:1px solid var(--border);
     border-radius:var(--radius);overflow:hidden;
+    overflow-x:auto;
   }
   .tbl{width:100%;border-collapse:collapse;font-size:.9rem;}
   .tbl th{
@@ -225,6 +226,14 @@
   .tbl tr:last-child td{border-bottom:none;}
   .tbl tr:hover{background:#fbfdfc;}
   .tbl .actions{display:flex;gap:6px;flex-wrap:wrap;}
+
+  .code-pill{
+    display:inline-block;
+    background:var(--primary-light);color:var(--primary);
+    font-family:monospace;font-weight:800;
+    padding:4px 10px;border-radius:8px;
+    font-size:.88rem;letter-spacing:1px;
+  }
 
   .badge-status{
     display:inline-block;padding:3px 10px;
@@ -255,6 +264,7 @@
   .btn-danger{background:var(--danger);color:#fff;}
   .btn-danger:hover:not(:disabled){background:#8e0000;}
   .btn-warn{background:var(--warn);color:#fff;}
+  .btn-info{background:var(--info);color:#fff;}
   .btn-ghost{background:#f1f4f6;color:var(--text);}
   .btn-ghost:hover:not(:disabled){background:#e2e8f0;}
   .btn-sm{padding:5px 10px;font-size:.78rem;}
@@ -290,9 +300,11 @@
     width:100%;max-width:640px;max-height:90vh;overflow-y:auto;
     box-shadow:0 20px 60px rgba(0,0,0,.3);
   }
+  .modal.wide{max-width:900px;}
   .modal-header{
     padding:18px 22px;border-bottom:1px solid var(--border);
     display:flex;align-items:center;justify-content:space-between;
+    position:sticky;top:0;background:#fff;z-index:2;
   }
   .modal-header h3{font-size:1.05rem;}
   .modal-close{
@@ -303,6 +315,7 @@
   .modal-footer{
     padding:14px 22px;border-top:1px solid var(--border);
     display:flex;gap:10px;justify-content:flex-start;flex-wrap:wrap;
+    position:sticky;bottom:0;background:#fff;
   }
   .detail-row{
     display:flex;gap:10px;margin-bottom:12px;
@@ -311,11 +324,71 @@
   .detail-row .lbl{
     color:var(--muted);font-weight:600;min-width:120px;flex-shrink:0;
   }
-  .detail-row .val{word-break:break-word;}
-  .detail-row img{
-    max-width:100%;max-height:260px;border-radius:8px;
-    border:1px solid var(--border);margin-top:6px;
+  .detail-row .val{word-break:break-word;flex:1;}
+
+  .image-grid{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 8px;
   }
+  .image-card{
+    background: #f8fafb;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    text-align: center;
+  }
+  .image-card .cap{
+    font-size: .8rem;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .image-card img{
+    width: 100%;
+    max-height: 220px;
+    object-fit: contain;
+    border-radius: 8px;
+    background: #fff;
+    cursor: zoom-in;
+  }
+  .image-card a{
+    display: inline-block;
+    margin-top: 6px;
+    font-size: .78rem;
+    color: var(--primary);
+  }
+  .image-empty{
+    text-align: center;
+    padding: 30px 10px;
+    color: var(--muted);
+    font-size: .85rem;
+    background: #f8fafb;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+  }
+
+  .form-field{margin-bottom:16px;}
+  .form-field label{
+    display:block;font-weight:600;font-size:.9rem;margin-bottom:6px;
+  }
+  .form-field input[type="text"],
+  .form-field input[type="tel"],
+  .form-field select,
+  .form-field textarea{
+    width:100%;padding:11px 14px;
+    border:1.5px solid var(--border);border-radius:9px;
+    font-size:.95rem;outline:none;transition:.2s;
+    background:#fbfdfc;
+  }
+  .form-field input:focus,
+  .form-field select:focus,
+  .form-field textarea:focus{
+    border-color:var(--primary);background:#fff;
+    box-shadow:0 0 0 4px rgba(11,107,82,.12);
+  }
+  .form-field textarea{resize:vertical;min-height:80px;}
 
   .toast-wrap{
     position:fixed;top:20px;left:50%;transform:translateX(-50%);
@@ -343,22 +416,60 @@
   .qr-box img{max-width:220px;width:100%;}
   .qr-box .id{font-family:monospace;font-size:.8rem;color:var(--muted);margin-top:8px;word-break:break-all;}
 
-  .print-label{
-    background:#fff;border:2px dashed var(--primary);
-    border-radius:12px;padding:22px;text-align:center;
-    max-width:320px;margin:0 auto 10px;
+  #mapContainer{
+    height: 450px;
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid var(--border);
   }
-  .print-label .lz{
-    display:flex;align-items:center;gap:8px;justify-content:center;
-    font-weight:700;color:var(--primary);margin-bottom:12px;
+  .map-info-bar{
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    background: #f8fafb;
+    border-radius: 10px;
+    margin-bottom: 12px;
+    font-size: .85rem;
   }
-  .print-label .lz .shield{
-    width:24px;height:24px;background:var(--accent);
-    border-radius:6px 6px 50% 50%;
-    clip-path:polygon(50% 0,100% 20%,100% 70%,50% 100%,0 70%,0 20%);
+  .map-info-bar .item{
+    display: flex; align-items: center; gap: 6px;
   }
-  .print-label img{max-width:200px;margin:8px auto;display:block;}
-  .print-label .hint{font-size:.82rem;color:var(--muted);margin-top:8px;line-height:1.5;}
+  .map-info-bar .dot{
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+  .map-info-bar .dot.green{background: #2e7d32;}
+  .map-info-bar .dot.red{background: #c62828;}
+  .map-info-bar .dot.blue{background: #1565c0;}
+
+  .lightbox{
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.9);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 5000;
+    padding: 20px;
+  }
+  .lightbox.show{display: flex;}
+  .lightbox img{
+    max-width: 95vw;
+    max-height: 95vh;
+    border-radius: 10px;
+  }
+  .lightbox .close-lightbox{
+    position: absolute;
+    top: 20px;
+    inset-inline-end: 20px;
+    background: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
 
   @media(max-width:860px){
     .sidebar{transform:translateX(100%);}
@@ -368,6 +479,8 @@
     .topbar h1{font-size:1.15rem;}
     .tbl{font-size:.82rem;}
     .tbl th,.tbl td{padding:8px 10px;}
+    #mapContainer{height: 320px;}
+    .image-grid{grid-template-columns: 1fr;}
   }
 
   @media print{
@@ -382,7 +495,11 @@
 <div class="loading-overlay" id="loadingOverlay"><div class="loader"></div></div>
 <div class="toast-wrap" id="toastWrap"></div>
 
-<!-- ============ LOGIN ============ -->
+<div class="lightbox" id="lightbox">
+  <button class="close-lightbox" id="closeLightbox">× إغلاق</button>
+  <img id="lightboxImg" src="" alt="" />
+</div>
+
 <div class="login-wrap" id="loginWrap">
   <form class="login-card" id="loginForm">
     <div class="login-logo">
@@ -403,7 +520,6 @@
   </form>
 </div>
 
-<!-- ============ APP ============ -->
 <div class="app" id="app">
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
@@ -433,7 +549,6 @@
       <div class="admin-chip" id="adminChip">—</div>
     </div>
 
-    <!-- ========== Overview ========== -->
     <section class="page active" id="page-overview">
       <div class="stats-grid">
         <div class="stat-card pending"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><span class="label">طلبات قيد المراجعة</span><span class="value" id="s-pending">—</span></div>
@@ -458,7 +573,6 @@
       </div>
     </section>
 
-    <!-- ========== Requests ========== -->
     <section class="page" id="page-requests">
       <div class="filters">
         <input type="text" id="reqSearch" placeholder="ابحث بالاسم أو الهاتف..." />
@@ -472,7 +586,6 @@
       </div>
     </section>
 
-    <!-- ========== Drivers ========== -->
     <section class="page" id="page-drivers">
       <div class="filters">
         <input type="text" id="drvSearch" placeholder="ابحث بالاسم أو الهاتف أو كود السائق..." />
@@ -485,7 +598,6 @@
       </div>
     </section>
 
-    <!-- ========== QR ========== -->
     <section class="page" id="page-qr">
       <div class="filters">
         <input type="text" id="qrSearch" placeholder="ابحث بالاسم أو كود السائق..." />
@@ -497,7 +609,6 @@
       </div>
     </section>
 
-    <!-- ========== Trips ========== -->
     <section class="page" id="page-trips">
       <div class="filters">
         <input type="text" id="tripSearch" placeholder="ابحث بكود الرحلة أو كود السائق..." />
@@ -505,13 +616,12 @@
         <button class="btn btn-ghost" id="exportTripsBtn">تصدير CSV</button>
       </div>
       <div class="table-wrap">
-        <table class="tbl"><thead><tr><th>كود الرحلة</th><th>السائق</th><th>البداية</th><th>النهاية</th><th>المدة</th><th>الحالة</th><th>تفاصيل</th></tr></thead>
-          <tbody id="tripsBody"><tr><td colspan="7" class="empty"><p>لا توجد رحلات</p></td></tr></tbody>
+        <table class="tbl"><thead><tr><th>كود الرحلة</th><th>السائق</th><th>البداية</th><th>النهاية</th><th>المدة</th><th>النقاط</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+          <tbody id="tripsBody"><tr><td colspan="8" class="empty"><p>لا توجد رحلات</p></td></tr></tbody>
         </table>
       </div>
     </section>
 
-    <!-- ========== Reports ========== -->
     <section class="page" id="page-reports">
       <div class="filters">
         <input type="text" id="repSearch" placeholder="ابحث في الوصف..." />
@@ -524,7 +634,6 @@
       </div>
     </section>
 
-    <!-- ========== Logs ========== -->
     <section class="page" id="page-logs">
       <div class="table-wrap">
         <table class="tbl"><thead><tr><th>التاريخ</th><th>الإجراء</th><th>بواسطة</th><th>سجل مرتبط</th></tr></thead>
@@ -535,9 +644,8 @@
   </main>
 </div>
 
-<!-- ============ Modal ============ -->
 <div class="modal-bg" id="modalBg">
-  <div class="modal">
+  <div class="modal" id="modalBox">
     <div class="modal-header">
       <h3 id="modalTitle">تفاصيل</h3>
       <button class="modal-close" id="modalClose">×</button>
@@ -547,17 +655,15 @@
   </div>
 </div>
 
-<!-- ============ Print area ============ -->
 <div id="printArea" style="display:none;"></div>
 
-<!-- ============ Firebase SDK ============ -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
 <script>
 /* ============================================================
-   1) Firebase config
+   Firebase
    ============================================================ */
 const firebaseConfig = {
   apiKey: "AIzaSyBjpbZHdumCpG-klvaJAkNBfdoghlG-cTU",
@@ -573,14 +679,10 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-/* ============================================================
-   2) رابط موقع الراكب الفعلي
-   ⚠️ أي تعديل على دومين أو مسار صفحة الراكب → غيّره هنا فقط
-   ============================================================ */
 const PASSENGER_SITE_URL = "https://safety-sticker.github.io/Security-sticker-user/";
 
 /* ============================================================
-   3) أدوات مساعدة
+   أدوات مساعدة
    ============================================================ */
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -596,9 +698,12 @@ const els = {
   pageTitle: $("pageTitle"),
   adminChip: $("adminChip"),
   modalBg: $("modalBg"),
+  modalBox: $("modalBox"),
   modalTitle: $("modalTitle"),
   modalBody: $("modalBody"),
-  modalFooter: $("modalFooter")
+  modalFooter: $("modalFooter"),
+  lightbox: $("lightbox"),
+  lightboxImg: $("lightboxImg")
 };
 
 function showLoading(v){ els.loading.classList.toggle("show", v); }
@@ -640,15 +745,37 @@ function fmtDuration(start, end){
 }
 
 /* ============================================================
-   4) توليد كود السائق + رابط QR
+   Lightbox
+   ============================================================ */
+function openLightbox(src){
+  els.lightboxImg.src = src;
+  els.lightbox.classList.add("show");
+}
+$("closeLightbox").addEventListener("click", ()=> els.lightbox.classList.remove("show"));
+els.lightbox.addEventListener("click", (e)=>{ if(e.target === els.lightbox) els.lightbox.classList.remove("show"); });
+
+/* ============================================================
+   توليد كود السائق (D-XXXX)
    ============================================================ */
 function generateDriverCode(){
-  const rand = Math.random().toString(36).slice(2,8).toUpperCase();
-  const ts = Date.now().toString(36).toUpperCase().slice(-4);
-  return `DRV-${ts}-${rand}`;
+  // D-XXXX من 1000 إلى 9999
+  return `D-${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
-/* ✅ الرابط الكامل الذي يُخزَّن في QR ويُفتح عند المسح */
+/* توليد كود سائق فريد مع التحقق من عدم التعارض */
+async function generateUniqueDriverCode(){
+  for(let i = 0; i < 15; i++){
+    const code = generateDriverCode();
+    const exists = await db.collection("drivers")
+      .where("driverCode", "==", code)
+      .limit(1)
+      .get();
+    if(exists.empty) return code;
+  }
+  // في حالات نادرة جدًا — نزيد 5 أرقام
+  return `D-${Math.floor(10000 + Math.random() * 90000)}`;
+}
+
 function buildPassengerUrl(driverCode){
   const base = PASSENGER_SITE_URL.endsWith("/")
     ? PASSENGER_SITE_URL
@@ -656,13 +783,12 @@ function buildPassengerUrl(driverCode){
   return `${base}?driver=${encodeURIComponent(driverCode)}`;
 }
 
-/* توليد صورة QR من أي نص */
 function qrImageUrl(text, size=220){
   return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}&margin=8`;
 }
 
 /* ============================================================
-   5) تسجيل الدخول
+   تسجيل الدخول
    ============================================================ */
 els.loginForm.addEventListener("submit", async (e)=>{
   e.preventDefault();
@@ -707,7 +833,7 @@ auth.onAuthStateChanged(user => {
 });
 
 /* ============================================================
-   6) سجل الأدمن
+   سجل الأدمن
    ============================================================ */
 async function logAdmin(action, refId, extra={}){
   try{
@@ -723,7 +849,7 @@ async function logAdmin(action, refId, extra={}){
 }
 
 /* ============================================================
-   7) التنقل
+   التنقل
    ============================================================ */
 const PAGE_TITLES = {
   overview:"الرئيسية",
@@ -750,9 +876,9 @@ document.querySelectorAll(".nav button[data-page]").forEach(btn=>{
 els.menuToggle.addEventListener("click", ()=>els.sidebar.classList.toggle("open"));
 
 /* ============================================================
-   8) Modal
+   Modal
    ============================================================ */
-function openModal(title, bodyHtml, footerButtons=[]){
+function openModal(title, bodyHtml, footerButtons=[], wide=false){
   els.modalTitle.textContent = title;
   els.modalBody.innerHTML = bodyHtml;
   els.modalFooter.innerHTML = "";
@@ -763,6 +889,7 @@ function openModal(title, bodyHtml, footerButtons=[]){
     btn.addEventListener("click", ()=> b.onClick && b.onClick());
     els.modalFooter.appendChild(btn);
   });
+  els.modalBox.classList.toggle("wide", !!wide);
   els.modalBg.classList.add("show");
 }
 function closeModal(){ els.modalBg.classList.remove("show"); }
@@ -770,7 +897,7 @@ $("modalClose").addEventListener("click", closeModal);
 els.modalBg.addEventListener("click", e=>{ if(e.target === els.modalBg) closeModal(); });
 
 /* ============================================================
-   9) الاستماع الحي
+   الاستماع الحي
    ============================================================ */
 let unsubs = [];
 let cache = { requests:[], drivers:[], trips:[], reports:[], logs:[] };
@@ -822,7 +949,7 @@ function stopDashboard(){
 }
 
 /* ============================================================
-   10) Overview
+   Overview
    ============================================================ */
 function renderOverview(){
   const r = cache.requests;
@@ -848,7 +975,7 @@ function renderOverview(){
     ? `<tr><td colspan="4" class="empty"><p>لا توجد بيانات</p></td></tr>`
     : recentTrips.map(t=>`
       <tr>
-        <td>${escapeHtml(t.tripCode || t.id)}</td>
+        <td><span class="code-pill">${escapeHtml(t.tripCode || t.id)}</span></td>
         <td>${escapeHtml(driverName(t.driverId) || t.driverName || "—")}</td>
         <td><span class="badge-status ${escapeHtml(t.status||"active")}">${statusLabel(t.status)}</span></td>
         <td>${fmtDate(t.createdAt)}</td>
@@ -879,7 +1006,7 @@ function driverName(id){
 }
 
 /* ============================================================
-   11) Requests
+   Requests
    ============================================================ */
 function filteredRequests(){
   const q = ($("reqSearch").value || "").trim().toLowerCase();
@@ -922,6 +1049,7 @@ function renderRequests(){
           <button class="btn btn-success btn-sm" data-act="approve" data-id="${r.id}">قبول</button>
           <button class="btn btn-danger btn-sm" data-act="reject" data-id="${r.id}">رفض</button>
         ` : ""}
+        <button class="btn btn-danger btn-sm" data-act="delete" data-id="${r.id}">حذف</button>
       </td>
     </tr>
   `).join("");
@@ -933,6 +1061,7 @@ function renderRequests(){
       if(act === "view") viewRequest(id);
       else if(act === "approve") confirmApprove(id);
       else if(act === "reject") confirmReject(id);
+      else if(act === "delete") confirmDeleteRequest(id);
     });
   });
 }
@@ -940,6 +1069,19 @@ function renderRequests(){
 $("reqSearch").addEventListener("input", renderRequests);
 $("reqStatus").addEventListener("change", renderRequests);
 $("reqSort").addEventListener("change", renderRequests);
+
+function imageBlock(url, label){
+  if(!url){
+    return `<div class="image-empty">لا توجد صورة</div>`;
+  }
+  return `
+    <div class="image-card">
+      <div class="cap">${label}</div>
+      <img src="${escapeHtml(url)}" alt="${label}" onclick="openLightbox('${escapeHtml(url)}')" />
+      <a href="${escapeHtml(url)}" target="_blank">فتح في تبويب جديد</a>
+    </div>
+  `;
+}
 
 function viewRequest(id){
   const r = cache.requests.find(x=>x.id === id);
@@ -949,16 +1091,19 @@ function viewRequest(id){
     <div class="detail-row"><span class="lbl">رقم الهاتف:</span><span class="val">${escapeHtml(r.phone||"—")}</span></div>
     <div class="detail-row"><span class="lbl">الحالة:</span><span class="val"><span class="badge-status ${escapeHtml(r.status||"pending")}">${statusLabel(r.status)}</span></span></div>
     <div class="detail-row"><span class="lbl">تاريخ الطلب:</span><span class="val">${fmtDate(r.createdAt)}</span></div>
-    <div class="detail-row"><span class="lbl">صورة البطاقة:</span><span class="val">${r.idCardUrl ? `<a href="${escapeHtml(r.idCardUrl)}" target="_blank">فتح الصورة</a><br><img src="${escapeHtml(r.idCardUrl)}" alt="بطاقة" />` : "—"}</span></div>
-    <div class="detail-row"><span class="lbl">صورة اللوحة:</span><span class="val">${r.plateImageUrl ? `<a href="${escapeHtml(r.plateImageUrl)}" target="_blank">فتح الصورة</a><br><img src="${escapeHtml(r.plateImageUrl)}" alt="لوحة" />` : "غير متوفرة"}</span></div>
+    <div class="image-grid">
+      ${imageBlock(r.idCardUrl, "صورة البطاقة")}
+      ${imageBlock(r.plateImageUrl, "صورة اللوحة")}
+    </div>
   `;
   const buttons = [];
   if(r.status === "pending"){
     buttons.push({label:"قبول", className:"btn-success", onClick:()=>{ closeModal(); confirmApprove(id); }});
     buttons.push({label:"رفض", className:"btn-danger", onClick:()=>{ closeModal(); confirmReject(id); }});
   }
+  buttons.push({label:"حذف", className:"btn-danger", onClick:()=>{ closeModal(); confirmDeleteRequest(id); }});
   buttons.push({label:"إغلاق", className:"btn-ghost", onClick: closeModal});
-  openModal("تفاصيل طلب التسجيل", html, buttons);
+  openModal("تفاصيل طلب التسجيل", html, buttons, true);
 }
 
 function confirmApprove(id){
@@ -966,7 +1111,7 @@ function confirmApprove(id){
   if(!r) return;
   openModal("تأكيد قبول الطلب",
     `<p>هل أنت متأكد من قبول طلب السائق <strong>${escapeHtml(r.fullName||"")}</strong>؟</p>
-     <p style="margin-top:10px;color:#6b7280;font-size:.85rem;">سيتم إنشاء سجل سائق جديد مع QR خاص به يفتح صفحة الراكب مباشرة.</p>`,
+     <p style="margin-top:10px;color:#6b7280;font-size:.85rem;">سيتم إنشاء سجل سائق جديد مع QR خاص به.</p>`,
     [
       {label:"تأكيد القبول", className:"btn-success", onClick:()=>{ closeModal(); approveRequest(id); }},
       {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
@@ -992,6 +1137,33 @@ function confirmReject(id){
   ]);
 }
 
+function confirmDeleteRequest(id){
+  const r = cache.requests.find(x=>x.id === id);
+  if(!r) return;
+  openModal("تأكيد حذف الطلب",
+    `<p>هل أنت متأكد من حذف طلب التسجيل الخاص بـ <strong>${escapeHtml(r.fullName||"")}</strong>؟</p>
+     <p style="margin-top:10px;color:#c62828;font-size:.85rem;">⚠️ لا يمكن التراجع عن هذه العملية.</p>`,
+    [
+      {label:"تأكيد الحذف", className:"btn-danger", onClick:()=>{ closeModal(); deleteRequest(id); }},
+      {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
+    ]);
+}
+
+async function deleteRequest(id){
+  showLoading(true);
+  try {
+    const r = cache.requests.find(x=>x.id === id);
+    await db.collection("driverRequests").doc(id).delete();
+    await logAdmin("delete_request", id, { fullName: r ? r.fullName : null });
+    toast("تم حذف الطلب.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل الحذف: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
+}
+
 async function approveRequest(id){
   const r = cache.requests.find(x=>x.id === id);
   if(!r){ toast("لم يتم العثور على الطلب.", "error"); return; }
@@ -1005,13 +1177,11 @@ async function approveRequest(id){
 
   showLoading(true);
   try{
-    const driverCode = generateDriverCode();
-    /* ✅ الرابط الكامل الذي يُفتح عند مسح QR */
+    // ✅ كود سائق فريد بصيغة D-XXXX
+    const driverCode = await generateUniqueDriverCode();
     const qrPayload = buildPassengerUrl(driverCode);
-    const qrUrl = qrPayload;
 
     const batch = db.batch();
-
     const newDriverRef = db.collection("drivers").doc();
     batch.set(newDriverRef, {
       driverCode,
@@ -1019,8 +1189,8 @@ async function approveRequest(id){
       phone: r.phone || "",
       idCardUrl: r.idCardUrl || null,
       plateImageUrl: r.plateImageUrl || null,
-      qrUrl,
-      qrPayload, // ← رابط صفحة الراكب
+      qrUrl: qrPayload,
+      qrPayload,
       status: "enabled",
       sourceRequestId: r.id,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -1034,10 +1204,8 @@ async function approveRequest(id){
     });
 
     await batch.commit();
-
     await logAdmin("approve_request", r.id, { driverId: newDriverRef.id, driverCode });
-
-    toast("تم قبول الطلب وإنشاء سجل السائق.", "success");
+    toast("تم قبول الطلب. كود السائق: " + driverCode, "success");
   } catch(err){
     console.error(err);
     toast("فشل القبول: " + err.message, "error");
@@ -1066,7 +1234,7 @@ async function rejectRequest(id, reason){
 }
 
 /* ============================================================
-   12) Drivers
+   Drivers
    ============================================================ */
 function filteredDrivers(){
   const q = ($("drvSearch").value || "").trim().toLowerCase();
@@ -1089,11 +1257,10 @@ function renderDrivers(){
     return;
   }
   tbody.innerHTML = list.map(d=>{
-    /* نولّد QR من qrPayload أو من الرابط المُشتق من driverCode */
     const qrContent = d.qrPayload || buildPassengerUrl(d.driverCode || "");
     return `
     <tr>
-      <td style="font-family:monospace;font-size:.82rem;">${escapeHtml(d.driverCode||"—")}</td>
+      <td><span class="code-pill">${escapeHtml(d.driverCode||"—")}</span></td>
       <td>${escapeHtml(d.fullName||"—")}</td>
       <td>${escapeHtml(d.phone||"—")}</td>
       <td>${qrContent ? `<img src="${qrImageUrl(qrContent,80)}" style="width:50px;height:50px;border-radius:6px;" />` : "—"}</td>
@@ -1101,11 +1268,13 @@ function renderDrivers(){
       <td><span class="badge-status ${d.status==="disabled"?"disabled":"enabled"}">${d.status==="disabled"?"موقوف":"مفعّل"}</span></td>
       <td class="actions">
         <button class="btn btn-ghost btn-sm" data-act="view" data-id="${d.id}">تفاصيل</button>
+        <button class="btn btn-info btn-sm" data-act="edit" data-id="${d.id}">تعديل</button>
         <button class="btn btn-ghost btn-sm" data-act="qr" data-id="${d.id}">QR</button>
         <button class="btn btn-ghost btn-sm" data-act="trips" data-id="${d.id}">رحلات</button>
         ${d.status==="disabled"
           ? `<button class="btn btn-success btn-sm" data-act="enable" data-id="${d.id}">تفعيل</button>`
           : `<button class="btn btn-warn btn-sm" data-act="disable" data-id="${d.id}">إيقاف</button>`}
+        <button class="btn btn-danger btn-sm" data-act="delete" data-id="${d.id}">حذف</button>
       </td>
     </tr>`;
   }).join("");
@@ -1115,10 +1284,12 @@ function renderDrivers(){
       const act = btn.dataset.act;
       const id = btn.dataset.id;
       if(act === "view") viewDriver(id);
+      else if(act === "edit") editDriver(id);
       else if(act === "qr") showDriverQr(id);
       else if(act === "trips") showDriverTrips(id);
       else if(act === "enable") toggleDriver(id, true);
       else if(act === "disable") toggleDriver(id, false);
+      else if(act === "delete") confirmDeleteDriver(id);
     });
   });
 }
@@ -1131,21 +1302,119 @@ function viewDriver(id){
   if(!d) return;
   const qrContent = d.qrPayload || buildPassengerUrl(d.driverCode || "");
   const html = `
-    <div class="detail-row"><span class="lbl">كود السائق:</span><span class="val" style="font-family:monospace;">${escapeHtml(d.driverCode||"—")}</span></div>
+    <div class="detail-row"><span class="lbl">كود السائق:</span><span class="val"><span class="code-pill">${escapeHtml(d.driverCode||"—")}</span></span></div>
     <div class="detail-row"><span class="lbl">الاسم:</span><span class="val">${escapeHtml(d.fullName||"—")}</span></div>
-    <div class="detail-row"><span class="lbl">الهاتف:</span><span class="val">${escapeHtml(d.phone||"—")}</span></div>
+    <div class="detail-row"><span class="lbl">رقم الهاتف:</span><span class="val"><a href="tel:${escapeHtml(d.phone||"")}">${escapeHtml(d.phone||"—")}</a></span></div>
     <div class="detail-row"><span class="lbl">الحالة:</span><span class="val">${d.status==="disabled"?"موقوف":"مفعّل"}</span></div>
     <div class="detail-row"><span class="lbl">تاريخ التسجيل:</span><span class="val">${fmtDate(d.createdAt)}</span></div>
     <div class="detail-row"><span class="lbl">رابط QR:</span><span class="val" style="font-family:monospace;font-size:.78rem;word-break:break-all;">${escapeHtml(qrContent)}</span></div>
-    <div class="detail-row"><span class="lbl">صور البطاقة/اللوحة:</span><span class="val">
-      ${d.idCardUrl ? `<a href="${escapeHtml(d.idCardUrl)}" target="_blank">بطاقة</a>` : ""}
-      ${d.plateImageUrl ? ` · <a href="${escapeHtml(d.plateImageUrl)}" target="_blank">لوحة</a>` : ""}
-    </span></div>
+
+    <div style="margin-top:16px;">
+      <div style="font-weight:700;margin-bottom:8px;font-size:.95rem;">صور المستندات:</div>
+      <div class="image-grid">
+        ${imageBlock(d.idCardUrl, "صورة البطاقة")}
+        ${imageBlock(d.plateImageUrl, "صورة اللوحة")}
+      </div>
+    </div>
   `;
   openModal("تفاصيل السائق", html, [
+    {label:"تعديل", className:"btn-info", onClick:()=>{ closeModal(); editDriver(id); }},
     {label:"عرض QR", className:"btn-primary", onClick:()=>{ closeModal(); showDriverQr(id); }},
     {label:"إغلاق", className:"btn-ghost", onClick: closeModal}
+  ], true);
+}
+
+function editDriver(id){
+  const d = cache.drivers.find(x=>x.id === id);
+  if(!d) return;
+  const html = `
+    <div class="form-field">
+      <label>كود السائق (للعرض فقط)</label>
+      <input type="text" value="${escapeHtml(d.driverCode||"")}" disabled style="background:#f1f4f6;cursor:not-allowed;font-family:monospace;font-weight:700;" />
+    </div>
+    <div class="form-field">
+      <label>الاسم الكامل <span style="color:#c62828;">*</span></label>
+      <input type="text" id="editFullName" value="${escapeHtml(d.fullName||"")}" />
+    </div>
+    <div class="form-field">
+      <label>رقم الهاتف <span style="color:#c62828;">*</span></label>
+      <input type="tel" id="editPhone" value="${escapeHtml(d.phone||"")}" inputmode="numeric" />
+    </div>
+    <div class="form-field">
+      <label>الحالة</label>
+      <select id="editStatus">
+        <option value="enabled" ${d.status!=="disabled"?"selected":""}>مفعّل</option>
+        <option value="disabled" ${d.status==="disabled"?"selected":""}>موقوف</option>
+      </select>
+    </div>
+    <p style="font-size:.82rem;color:#6b7280;margin-top:8px;">
+      ملاحظة: تعديل الكود أو الرابط يتطلب استخدام زر "إعادة توليد" من نافذة QR.
+    </p>
+  `;
+  openModal("تعديل بيانات السائق", html, [
+    {label:"حفظ التعديلات", className:"btn-success", onClick:()=>{
+      const fullName = ($("editFullName").value || "").trim();
+      const phone = ($("editPhone").value || "").trim();
+      const status = $("editStatus").value;
+      if(!fullName || fullName.length < 3){ toast("الاسم غير صالح.", "error"); return; }
+      if(!/^01[0125][0-9]{8}$/.test(phone)){ toast("رقم الهاتف غير صحيح.", "error"); return; }
+      closeModal();
+      saveDriverEdit(id, { fullName, phone, status });
+    }},
+    {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
   ]);
+}
+
+async function saveDriverEdit(id, data){
+  showLoading(true);
+  try {
+    await db.collection("drivers").doc(id).update({
+      fullName: data.fullName,
+      phone: data.phone,
+      status: data.status,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: auth.currentUser ? auth.currentUser.email : null
+    });
+    await logAdmin("edit_driver", id, { changes: data });
+    toast("تم تحديث بيانات السائق.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل التحديث: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
+}
+
+function confirmDeleteDriver(id){
+  const d = cache.drivers.find(x=>x.id === id);
+  if(!d) return;
+  const tripsCount = cache.trips.filter(t => t.driverId === id).length;
+  openModal("تأكيد حذف السائق",
+    `<p>هل أنت متأكد من حذف السائق <strong>${escapeHtml(d.fullName||"")}</strong>؟</p>
+     <p style="margin-top:10px;color:#c62828;font-size:.85rem;">⚠️ سيتم حذف سجل السائق و QR الخاص به.</p>
+     <p style="margin-top:8px;color:#6b7280;font-size:.85rem;">
+       عدد الرحلات المرتبطة بهذا السائق: <strong>${tripsCount}</strong><br>
+       لن يتم حذف الرحلات.
+     </p>`,
+    [
+      {label:"تأكيد الحذف", className:"btn-danger", onClick:()=>{ closeModal(); deleteDriver(id); }},
+      {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
+    ]);
+}
+
+async function deleteDriver(id){
+  showLoading(true);
+  try {
+    const d = cache.drivers.find(x=>x.id === id);
+    await db.collection("drivers").doc(id).delete();
+    await logAdmin("delete_driver", id, { driverCode: d ? d.driverCode : null, fullName: d ? d.fullName : null });
+    toast("تم حذف السائق.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل الحذف: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
 }
 
 function showDriverQr(id){
@@ -1165,8 +1434,8 @@ function showDriverQr(id){
   openModal("QR — " + escapeHtml(d.fullName||""), html, [
     {label:"تحميل PNG", className:"btn-primary", onClick:()=>downloadQr(d)},
     {label:"طباعة ملصق", className:"btn-ghost", onClick:()=>printQr(d)},
-    {label:"إعادة توليد", className:"btn-warn", onClick:()=>regenerateQr(id)},
     {label:"فتح الرابط", className:"btn-ghost", onClick:()=>window.open(qrContent, "_blank")},
+    {label:"إعادة توليد", className:"btn-warn", onClick:()=>regenerateQr(id)},
     {label:"إغلاق", className:"btn-ghost", onClick: closeModal}
   ]);
 }
@@ -1186,11 +1455,17 @@ function printQr(d){
   const url = qrImageUrl(qrContent, 400);
   const area = $("printArea");
   area.innerHTML = `
-    <div class="print-label">
-      <div class="lz"><span class="shield"></span> لزقة أمان</div>
-      <img src="${url}" alt="QR" />
-      <div style="font-family:monospace;font-size:.9rem;margin-top:4px;">${escapeHtml(d.driverCode||"")}</div>
-      <div class="hint">امسح الكود بكاميرا هاتفك<br>لتفتح صفحة التحقق من السائق وبدء الرحلة</div>
+    <div style="background:#fff;border:2px dashed #0b6b52;border-radius:12px;padding:22px;text-align:center;max-width:320px;margin:0 auto;">
+      <div style="display:flex;align-items:center;gap:8px;justify-content:center;font-weight:700;color:#0b6b52;margin-bottom:12px;">
+        <span style="width:24px;height:24px;background:#f4b400;border-radius:6px 6px 50% 50%;clip-path:polygon(50% 0,100% 20%,100% 70%,50% 100%,0 70%,0 20%);"></span>
+        لزقة أمان
+      </div>
+      <img src="${url}" alt="QR" style="max-width:200px;margin:8px auto;display:block;" />
+      <div style="font-family:monospace;font-weight:700;font-size:1.1rem;margin-top:8px;">${escapeHtml(d.driverCode||"")}</div>
+      <div style="font-size:.82rem;color:#6b7280;margin-top:8px;line-height:1.5;">
+        امسح الكود بكاميرا هاتفك<br>
+        لتفتح صفحة التحقق من السائق وبدء الرحلة
+      </div>
     </div>
   `;
   area.style.display = "block";
@@ -1201,12 +1476,12 @@ function printQr(d){
 }
 
 async function regenerateQr(id){
-  if(!confirm("سيتم توليد رابط QR جديد وإبطال القديم. متابعة؟")) return;
+  if(!confirm("سيتم توليد كود QR جديد وإبطال القديم. متابعة؟")) return;
   const d = cache.drivers.find(x=>x.id === id);
   if(!d) return;
   showLoading(true);
   try{
-    const newCode = generateDriverCode();
+    const newCode = await generateUniqueDriverCode();
     const newPayload = buildPassengerUrl(newCode);
     await db.collection("drivers").doc(id).update({
       driverCode: newCode,
@@ -1216,7 +1491,7 @@ async function regenerateQr(id){
       previousCodes: firebase.firestore.FieldValue.arrayUnion(d.driverCode || "")
     });
     await logAdmin("regenerate_qr", id, { oldCode: d.driverCode, newCode });
-    toast("تم توليد QR جديد.", "success");
+    toast("تم توليد QR جديد. الكود: " + newCode, "success");
     closeModal();
   } catch(err){
     console.error(err);
@@ -1255,18 +1530,18 @@ function showDriverTrips(driverId){
     : `<div class="table-wrap"><table class="tbl"><thead><tr><th>كود الرحلة</th><th>البداية</th><th>النهاية</th><th>الحالة</th></tr></thead>
       <tbody>${trips.map(t=>`
         <tr>
-          <td>${escapeHtml(t.tripCode || t.id)}</td>
+          <td><span class="code-pill">${escapeHtml(t.tripCode || t.id)}</span></td>
           <td>${fmtDate(t.startTime || t.createdAt)}</td>
           <td>${fmtDate(t.endTime)}</td>
           <td><span class="badge-status ${escapeHtml(t.status||"active")}">${statusLabel(t.status)}</span></td>
         </tr>`).join("")}</tbody></table></div>`;
   openModal("رحلات السائق — " + escapeHtml(d ? d.fullName : ""), html, [
     {label:"إغلاق", className:"btn-ghost", onClick: closeModal}
-  ]);
+  ], true);
 }
 
 /* ============================================================
-   13) QR Management Page
+   QR Page
    ============================================================ */
 function renderQR(){
   const q = ($("qrSearch").value || "").trim().toLowerCase();
@@ -1284,7 +1559,7 @@ function renderQR(){
     const qrContent = d.qrPayload || buildPassengerUrl(d.driverCode || "");
     return `
     <tr>
-      <td style="font-family:monospace;font-size:.82rem;">${escapeHtml(d.driverCode||"—")}</td>
+      <td><span class="code-pill">${escapeHtml(d.driverCode||"—")}</span></td>
       <td>${escapeHtml(d.fullName||"—")}</td>
       <td style="font-family:monospace;font-size:.72rem;word-break:break-all;max-width:220px;">${escapeHtml(qrContent||"—")}</td>
       <td><img src="${qrImageUrl(qrContent, 70)}" style="width:44px;height:44px;border-radius:6px;" /></td>
@@ -1310,7 +1585,7 @@ function renderQR(){
 $("qrSearch").addEventListener("input", renderQR);
 
 /* ============================================================
-   14) Trips
+   Trips
    ============================================================ */
 function filteredTrips(){
   const q = ($("tripSearch").value || "").trim().toLowerCase();
@@ -1329,22 +1604,35 @@ function renderTrips(){
   const list = filteredTrips();
   const tbody = $("tripsBody");
   if(list.length === 0){
-    tbody.innerHTML = `<tr><td colspan="7" class="empty"><p>لا توجد رحلات</p></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="empty"><p>لا توجد رحلات</p></td></tr>`;
     return;
   }
-  tbody.innerHTML = list.map(t=>`
+  tbody.innerHTML = list.map(t=>{
+    const pointsCount = (t.locationPath && t.locationPath.length) || 0;
+    return `
     <tr>
-      <td style="font-family:monospace;font-size:.82rem;">${escapeHtml(t.tripCode || t.id)}</td>
+      <td><span class="code-pill">${escapeHtml(t.tripCode || t.id)}</span></td>
       <td>${escapeHtml(driverName(t.driverId) || t.driverName || t.driverCode || "—")}</td>
       <td>${fmtDate(t.startTime || t.createdAt)}</td>
       <td>${fmtDate(t.endTime)}</td>
       <td>${fmtDuration(t.startTime, t.endTime)}</td>
+      <td>${pointsCount}</td>
       <td><span class="badge-status ${escapeHtml(t.status||"active")}">${statusLabel(t.status)}</span></td>
-      <td><button class="btn btn-ghost btn-sm" data-id="${t.id}" data-act="v">عرض</button></td>
-    </tr>
-  `).join("");
-  tbody.querySelectorAll("button[data-act='v']").forEach(btn=>{
-    btn.addEventListener("click", ()=>viewTrip(btn.dataset.id));
+      <td class="actions">
+        <button class="btn btn-ghost btn-sm" data-act="v" data-id="${t.id}">عرض</button>
+        <button class="btn btn-info btn-sm" data-act="map" data-id="${t.id}">📍 المسار</button>
+        <button class="btn btn-danger btn-sm" data-act="del" data-id="${t.id}">حذف</button>
+      </td>
+    </tr>`;
+  }).join("");
+  tbody.querySelectorAll("button[data-act]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const id = btn.dataset.id;
+      const act = btn.dataset.act;
+      if(act === "v") viewTrip(id);
+      else if(act === "map") openTripMap(id);
+      else if(act === "del") confirmDeleteTrip(id);
+    });
   });
 }
 
@@ -1354,23 +1642,132 @@ $("tripStatus").addEventListener("change", renderTrips);
 function viewTrip(id){
   const t = cache.trips.find(x=>x.id === id);
   if(!t) return;
+  const pointsCount = (t.locationPath && t.locationPath.length) || 0;
   const html = `
-    <div class="detail-row"><span class="lbl">كود الرحلة:</span><span class="val" style="font-family:monospace;">${escapeHtml(t.tripCode || t.id)}</span></div>
+    <div class="detail-row"><span class="lbl">كود الرحلة:</span><span class="val"><span class="code-pill">${escapeHtml(t.tripCode || t.id)}</span></span></div>
     <div class="detail-row"><span class="lbl">السائق:</span><span class="val">${escapeHtml(driverName(t.driverId) || t.driverName || "—")}</span></div>
-    <div class="detail-row"><span class="lbl">كود السائق:</span><span class="val" style="font-family:monospace;">${escapeHtml(t.driverCode || "—")}</span></div>
+    <div class="detail-row"><span class="lbl">هاتف السائق:</span><span class="val">${escapeHtml(t.driverPhone || "—")}</span></div>
+    <div class="detail-row"><span class="lbl">كود السائق:</span><span class="val"><span class="code-pill">${escapeHtml(t.driverCode || "—")}</span></span></div>
     <div class="detail-row"><span class="lbl">البداية:</span><span class="val">${fmtDate(t.startTime || t.createdAt)}</span></div>
     <div class="detail-row"><span class="lbl">النهاية:</span><span class="val">${fmtDate(t.endTime)}</span></div>
     <div class="detail-row"><span class="lbl">المدة:</span><span class="val">${fmtDuration(t.startTime, t.endTime)}</span></div>
+    <div class="detail-row"><span class="lbl">عدد النقاط:</span><span class="val">${pointsCount}</span></div>
+    ${t.startLocation ? `<div class="detail-row"><span class="lbl">موقع البداية:</span><span class="val" style="font-family:monospace;font-size:.82rem;">${t.startLocation.lat.toFixed(5)}, ${t.startLocation.lng.toFixed(5)}</span></div>` : ""}
+    ${t.endLocation ? `<div class="detail-row"><span class="lbl">موقع النهاية:</span><span class="val" style="font-family:monospace;font-size:.82rem;">${t.endLocation.lat.toFixed(5)}, ${t.endLocation.lng.toFixed(5)}</span></div>` : ""}
     <div class="detail-row"><span class="lbl">الحالة:</span><span class="val"><span class="badge-status ${escapeHtml(t.status||"active")}">${statusLabel(t.status)}</span></span></div>
-    ${t.notes ? `<div class="detail-row"><span class="lbl">ملاحظات:</span><span class="val">${escapeHtml(t.notes)}</span></div>` : ""}
   `;
-  openModal("تفاصيل الرحلة", html, [{label:"إغلاق", className:"btn-ghost", onClick: closeModal}]);
+  openModal("تفاصيل الرحلة", html, [
+    pointsCount > 0 ? {label:"📍 عرض المسار", className:"btn-info", onClick:()=>{ closeModal(); openTripMap(id); }} : null,
+    {label:"إغلاق", className:"btn-ghost", onClick: closeModal}
+  ].filter(Boolean), true);
+}
+
+let activeMap = null;
+function openTripMap(id){
+  const t = cache.trips.find(x=>x.id === id);
+  if(!t) return;
+  const path = t.locationPath || [];
+  if(path.length === 0){
+    openModal("مسار الرحلة", `<p class="empty"><p>لا توجد بيانات موقع لهذه الرحلة.</p></p>`, [
+      {label:"إغلاق", className:"btn-ghost", onClick: closeModal}
+    ], true);
+    return;
+  }
+
+  const html = `
+    <div class="map-info-bar">
+      <div class="item"><span class="dot green"></span> البداية: <span style="font-family:monospace;">${path[0].lat.toFixed(5)}, ${path[0].lng.toFixed(5)}</span></div>
+      <div class="item"><span class="dot red"></span> النهاية: <span style="font-family:monospace;">${path[path.length-1].lat.toFixed(5)}, ${path[path.length-1].lng.toFixed(5)}</span></div>
+      <div class="item"><span class="dot blue"></span> عدد النقاط: ${path.length}</div>
+    </div>
+    <div id="mapContainer"></div>
+    <p style="margin-top:10px;font-size:.8rem;color:#6b7280;text-align:center;">
+      المسار معروض على خريطة CARTO — مجانًا بدون مفاتيح API.
+    </p>
+  `;
+  openModal("📍 مسار الرحلة — " + escapeHtml(t.tripCode || t.id), html, [
+    {label:"فتح في Google Maps", className:"btn-ghost", onClick:()=>{
+      const center = path[Math.floor(path.length/2)];
+      window.open(`https://www.google.com/maps?q=${center.lat},${center.lng}`, "_blank");
+    }},
+    {label:"إغلاق", className:"btn-ghost", onClick: ()=>{ closeModal(); }}
+  ], true);
+
+  setTimeout(()=>{
+    try {
+      if(activeMap){ try{ activeMap.remove(); }catch(_){} activeMap = null; }
+      const container = document.getElementById("mapContainer");
+      if(!container) return;
+
+      const map = L.map(container);
+      activeMap = map;
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 20,
+        subdomains: 'abcd',
+        attribution: '&copy; OpenStreetMap &copy; CARTO'
+      }).addTo(map);
+
+      const latlngs = path.map(p => [p.lat, p.lng]);
+      const polyline = L.polyline(latlngs, { color: '#1565c0', weight: 5, opacity: 0.85 }).addTo(map);
+
+      const startIcon = L.divIcon({
+        className: 'custom-marker',
+        html: '<div style="background:#2e7d32;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);"></div>',
+        iconSize: [18,18], iconAnchor: [9,9]
+      });
+      L.marker(latlngs[0], { icon: startIcon }).addTo(map).bindPopup("🟢 البداية");
+
+      if(latlngs.length > 1){
+        const endIcon = L.divIcon({
+          className: 'custom-marker',
+          html: '<div style="background:#c62828;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);"></div>',
+          iconSize: [18,18], iconAnchor: [9,9]
+        });
+        L.marker(latlngs[latlngs.length-1], { icon: endIcon }).addTo(map).bindPopup("🔴 النهاية");
+      }
+
+      map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
+      setTimeout(()=> map.invalidateSize(), 200);
+    } catch(err){
+      console.error("map error", err);
+    }
+  }, 250);
+}
+
+function confirmDeleteTrip(id){
+  const t = cache.trips.find(x=>x.id === id);
+  if(!t) return;
+  const reportsCount = cache.reports.filter(r => r.tripCode === t.tripCode).length;
+  openModal("تأكيد حذف الرحلة",
+    `<p>هل أنت متأكد من حذف الرحلة <strong>${escapeHtml(t.tripCode || t.id)}</strong>؟</p>
+     <p style="margin-top:10px;color:#c62828;font-size:.85rem;">⚠️ لا يمكن التراجع.</p>
+     ${reportsCount > 0 ? `<p style="margin-top:8px;color:#6b7280;font-size:.85rem;">عدد البلاغات المرتبطة: <strong>${reportsCount}</strong> — لن تُحذف تلقائيًا.</p>` : ""}`,
+    [
+      {label:"تأكيد الحذف", className:"btn-danger", onClick:()=>{ closeModal(); deleteTrip(id); }},
+      {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
+    ]);
+}
+
+async function deleteTrip(id){
+  showLoading(true);
+  try {
+    const t = cache.trips.find(x=>x.id === id);
+    await db.collection("trips").doc(id).delete();
+    await logAdmin("delete_trip", id, { tripCode: t ? t.tripCode : null });
+    toast("تم حذف الرحلة.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل الحذف: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
 }
 
 $("exportTripsBtn").addEventListener("click", ()=>{
   const list = filteredTrips();
   if(list.length === 0){ toast("لا توجد رحلات للتصدير.", "info"); return; }
-  const headers = ["tripCode","driverCode","driverName","startTime","endTime","duration","status"];
+  const headers = ["tripCode","driverCode","driverName","startTime","endTime","duration","points","status"];
   const rows = list.map(t=>[
     t.tripCode || t.id,
     t.driverCode || "",
@@ -1378,6 +1775,7 @@ $("exportTripsBtn").addEventListener("click", ()=>{
     t.startTime && t.startTime.toDate ? t.startTime.toDate().toISOString() : "",
     t.endTime && t.endTime.toDate ? t.endTime.toDate().toISOString() : "",
     fmtDuration(t.startTime, t.endTime),
+    (t.locationPath && t.locationPath.length) || 0,
     t.status || ""
   ]);
   const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
@@ -1392,7 +1790,7 @@ $("exportTripsBtn").addEventListener("click", ()=>{
 });
 
 /* ============================================================
-   15) Reports
+   Reports
    ============================================================ */
 function filteredReports(){
   const q = ($("repSearch").value || "").trim().toLowerCase();
@@ -1416,7 +1814,7 @@ function renderReports(){
   tbody.innerHTML = list.map(r=>`
     <tr>
       <td style="font-family:monospace;font-size:.78rem;">${escapeHtml((r.reportId || r.id).slice(0,10))}</td>
-      <td>${escapeHtml(r.tripCode || r.driverCode || r.driverId || "—")}</td>
+      <td>${r.tripCode ? `<span class="code-pill">${escapeHtml(r.tripCode)}</span>` : "—"}</td>
       <td>${escapeHtml(r.category || "—")}</td>
       <td style="max-width:280px;">${escapeHtml((r.description||"").slice(0,80))}${(r.description||"").length>80?"...":""}</td>
       <td>${fmtDate(r.createdAt)}</td>
@@ -1424,6 +1822,7 @@ function renderReports(){
       <td class="actions">
         <button class="btn btn-ghost btn-sm" data-act="view" data-id="${r.id}">تفاصيل</button>
         <button class="btn btn-ghost btn-sm" data-act="status" data-id="${r.id}">تحديث</button>
+        <button class="btn btn-danger btn-sm" data-act="delete" data-id="${r.id}">حذف</button>
       </td>
     </tr>
   `).join("");
@@ -1433,6 +1832,7 @@ function renderReports(){
       const act = btn.dataset.act;
       if(act === "view") viewReport(id);
       else if(act === "status") updateReportStatus(id);
+      else if(act === "delete") confirmDeleteReport(id);
     });
   });
 }
@@ -1444,8 +1844,8 @@ function viewReport(id){
   if(!r) return;
   const html = `
     <div class="detail-row"><span class="lbl">رقم البلاغ:</span><span class="val" style="font-family:monospace;">${escapeHtml(r.reportId || r.id)}</span></div>
-    <div class="detail-row"><span class="lbl">كود الرحلة:</span><span class="val" style="font-family:monospace;">${escapeHtml(r.tripCode || "—")}</span></div>
-    <div class="detail-row"><span class="lbl">كود السائق:</span><span class="val" style="font-family:monospace;">${escapeHtml(r.driverCode || "—")}</span></div>
+    <div class="detail-row"><span class="lbl">كود الرحلة:</span><span class="val">${r.tripCode ? `<span class="code-pill">${escapeHtml(r.tripCode)}</span>` : "—"}</span></div>
+    <div class="detail-row"><span class="lbl">كود السائق:</span><span class="val">${r.driverCode ? `<span class="code-pill">${escapeHtml(r.driverCode)}</span>` : "—"}</span></div>
     <div class="detail-row"><span class="lbl">التصنيف:</span><span class="val">${escapeHtml(r.category || "—")}</span></div>
     <div class="detail-row"><span class="lbl">الوصف:</span><span class="val">${escapeHtml(r.description || "—")}</span></div>
     <div class="detail-row"><span class="lbl">هاتف الراكب:</span><span class="val">${escapeHtml(r.contactPhone || "—")}</span></div>
@@ -1455,25 +1855,52 @@ function viewReport(id){
   `;
   openModal("تفاصيل البلاغ", html, [
     {label:"تحديث الحالة", className:"btn-primary", onClick:()=>{ closeModal(); updateReportStatus(id); }},
+    {label:"حذف", className:"btn-danger", onClick:()=>{ closeModal(); confirmDeleteReport(id); }},
     {label:"إغلاق", className:"btn-ghost", onClick: closeModal}
-  ]);
+  ], true);
+}
+
+function confirmDeleteReport(id){
+  const r = cache.reports.find(x=>x.id === id);
+  if(!r) return;
+  openModal("تأكيد حذف البلاغ",
+    `<p>هل أنت متأكد من حذف البلاغ <strong>${escapeHtml(r.reportId || r.id)}</strong>؟</p>
+     <p style="margin-top:10px;color:#c62828;font-size:.85rem;">⚠️ لا يمكن التراجع.</p>`,
+    [
+      {label:"تأكيد الحذف", className:"btn-danger", onClick:()=>{ closeModal(); deleteReport(id); }},
+      {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
+    ]);
+}
+
+async function deleteReport(id){
+  showLoading(true);
+  try {
+    await db.collection("reports").doc(id).delete();
+    await logAdmin("delete_report", id, {});
+    toast("تم حذف البلاغ.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل الحذف: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
 }
 
 function updateReportStatus(id){
   const r = cache.reports.find(x=>x.id === id);
   if(!r) return;
   const html = `
-    <div style="margin-bottom:12px;">
-      <label style="display:block;font-weight:600;font-size:.9rem;margin-bottom:6px;">الحالة الجديدة:</label>
-      <select id="newReportStatus" style="width:100%;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:inherit;">
+    <div class="form-field">
+      <label>الحالة الجديدة:</label>
+      <select id="newReportStatus">
         <option value="new" ${r.status==="new"?"selected":""}>جديد</option>
         <option value="under_review" ${r.status==="under_review"?"selected":""}>قيد المراجعة</option>
         <option value="resolved" ${r.status==="resolved"?"selected":""}>تم الحل</option>
       </select>
     </div>
-    <div>
-      <label style="display:block;font-weight:600;font-size:.9rem;margin-bottom:6px;">ملاحظة الأدمن (اختياري):</label>
-      <textarea id="reportNote" rows="3" style="width:100%;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:inherit;">${escapeHtml(r.adminNote||"")}</textarea>
+    <div class="form-field">
+      <label>ملاحظة الأدمن (اختياري):</label>
+      <textarea id="reportNote" rows="3">${escapeHtml(r.adminNote||"")}</textarea>
     </div>
   `;
   openModal("تحديث حالة البلاغ", html, [
@@ -1502,7 +1929,7 @@ function updateReportStatus(id){
 }
 
 /* ============================================================
-   16) Logs
+   Logs
    ============================================================ */
 function renderLogs(){
   const tbody = $("logsBody");
@@ -1524,10 +1951,15 @@ function actionLabel(a){
   const map = {
     approve_request:"قبول طلب تسجيل",
     reject_request:"رفض طلب تسجيل",
+    delete_request:"حذف طلب تسجيل",
+    edit_driver:"تعديل سائق",
+    delete_driver:"حذف سائق",
     enable_driver:"تفعيل سائق",
     disable_driver:"إيقاف سائق",
     regenerate_qr:"إعادة توليد QR",
-    update_report:"تحديث بلاغ"
+    delete_trip:"حذف رحلة",
+    update_report:"تحديث بلاغ",
+    delete_report:"حذف بلاغ"
   };
   return map[a] || a || "—";
 }
