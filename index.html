@@ -1,154 +1,1921 @@
-/**
- * Cloudflare Worker — حذف سجلات الأدمن الأقدم من 30 يومًا
- * يعمل تلقائيًا كل يوم الساعة 3 صباحًا بتوقيت UTC.
- */
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>لوحة تحكم لزقة أمان</title>
 
-export default {
-  // Cron Trigger
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(cleanupOldLogs(env));
-  },
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  // مسار يدوي للاختبار
-  async fetch(request, env) {
-    const result = await cleanupOldLogs(env);
-    return new Response(JSON.stringify(result), {
-      headers: { "Content-Type": "application/json" }
-    });
+<style>
+  :root{
+    --primary:#0b6b52;
+    --primary-dark:#084d3b;
+    --primary-light:#e6f4ef;
+    --accent:#f4b400;
+    --danger:#c62828;
+    --warn:#f57c00;
+    --success:#2e7d32;
+    --info:#1565c0;
+    --text:#1a1a1a;
+    --muted:#6b7280;
+    --bg:#f4f6f8;
+    --card:#ffffff;
+    --border:#e2e8f0;
+    --sidebar-w:260px;
+    --radius:12px;
   }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:'Segoe UI','Tahoma',system-ui,-apple-system,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    line-height:1.6;
+    direction:rtl;
+  }
+  button{font-family:inherit;cursor:pointer;}
+  input,select,textarea{font-family:inherit;}
+  a{color:inherit;text-decoration:none;}
+
+  /* Login */
+  .login-wrap{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;
+    padding:20px;background:linear-gradient(135deg,#0b6b52 0%,#084d3b 100%);
+  }
+  .login-card{
+    width:100%;max-width:420px;background:#fff;border-radius:16px;
+    padding:34px 28px;box-shadow:0 20px 60px rgba(0,0,0,.25);
+  }
+  .login-logo{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:20px;}
+  .login-logo .shield{
+    width:34px;height:34px;background:var(--primary);
+    border-radius:8px 8px 50% 50%;
+    clip-path:polygon(50% 0,100% 20%,100% 70%,50% 100%,0 70%,0 20%);
+  }
+  .login-logo h1{font-size:1.4rem;color:var(--primary);}
+  .login-card h2{text-align:center;font-size:1.05rem;color:var(--muted);font-weight:500;margin-bottom:24px;}
+  .login-field{margin-bottom:16px;}
+  .login-field label{display:block;font-size:.9rem;font-weight:600;margin-bottom:6px;}
+  .login-field input{
+    width:100%;padding:12px 14px;border:1.5px solid var(--border);
+    border-radius:10px;font-size:1rem;outline:none;transition:.2s;
+  }
+  .login-field input:focus{border-color:var(--primary);box-shadow:0 0 0 4px rgba(11,107,82,.12);}
+  .login-btn{
+    width:100%;padding:13px;background:var(--primary);color:#fff;
+    border:none;border-radius:10px;font-size:1rem;font-weight:700;
+    transition:.2s;margin-top:8px;
+  }
+  .login-btn:hover:not(:disabled){background:var(--primary-dark);}
+  .login-btn:disabled{opacity:.6;cursor:not-allowed;}
+  .login-error{background:#ffebee;color:var(--danger);padding:10px 14px;border-radius:8px;font-size:.87rem;margin-bottom:14px;display:none;}
+  .login-error.show{display:block;}
+
+  /* App */
+  .app{display:none;min-height:100vh;}
+  .app.show{display:flex;}
+
+  .sidebar{
+    width:var(--sidebar-w);
+    background:linear-gradient(180deg,#0b6b52,#084d3b);
+    color:#fff;padding:22px 0;
+    position:fixed;inset-block:0;inset-inline-end:0;
+    overflow-y:auto;z-index:100;transition:transform .25s;
+  }
+  .sidebar-header{
+    display:flex;align-items:center;gap:10px;
+    padding:0 20px 22px;border-bottom:1px solid rgba(255,255,255,.12);
+    margin-bottom:14px;
+  }
+  .sidebar-header .shield{
+    width:30px;height:30px;background:var(--accent);
+    border-radius:7px 7px 50% 50%;
+    clip-path:polygon(50% 0,100% 20%,100% 70%,50% 100%,0 70%,0 20%);
+  }
+  .sidebar-header h2{font-size:1.05rem;font-weight:700;}
+  .sidebar-header p{font-size:.75rem;opacity:.75;}
+
+  .nav{list-style:none;padding:0 10px;}
+  .nav li{margin-bottom:4px;}
+  .nav button{
+    width:100%;display:flex;align-items:center;gap:12px;
+    padding:11px 14px;border:none;background:transparent;color:#d7e7e0;
+    border-radius:9px;font-size:.93rem;font-weight:500;
+    text-align:right;transition:.2s;
+  }
+  .nav button:hover{background:rgba(255,255,255,.1);color:#fff;}
+  .nav button.active{background:rgba(255,255,255,.18);color:#fff;font-weight:700;}
+  .nav button svg{width:18px;height:18px;flex-shrink:0;}
+  .nav .badge{
+    margin-inline-start:auto;background:var(--accent);color:#000;
+    font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;
+  }
+  .nav .logout-btn{color:#ffcdd2;margin-top:12px;border-top:1px solid rgba(255,255,255,.12);padding-top:14px;}
+
+  .main{flex:1;margin-inline-end:var(--sidebar-w);padding:24px;min-height:100vh;}
+  .topbar{display:flex;align-items:center;gap:12px;margin-bottom:22px;}
+  .menu-toggle{display:none;background:#fff;border:1px solid var(--border);border-radius:9px;padding:9px 12px;}
+  .topbar h1{font-size:1.4rem;font-weight:700;}
+  .topbar .spacer{flex:1;}
+  .topbar .admin-chip{
+    background:#fff;border:1px solid var(--border);
+    padding:7px 14px;border-radius:999px;font-size:.85rem;color:var(--muted);
+  }
+
+  .page{display:none;}
+  .page.active{display:block;animation:fade .2s;}
+  @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+
+  .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;}
+  .stat-card{
+    background:var(--card);border-radius:var(--radius);padding:20px;
+    border:1px solid var(--border);display:flex;flex-direction:column;gap:6px;
+    transition:.2s;
+  }
+  .stat-card:hover{box-shadow:0 6px 18px rgba(0,0,0,.06);transform:translateY(-1px);}
+  .stat-card .icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:8px;}
+  .stat-card .icon svg{width:22px;height:22px;}
+  .stat-card .label{font-size:.85rem;color:var(--muted);font-weight:600;}
+  .stat-card .value{font-size:1.8rem;font-weight:700;color:var(--text);}
+  .stat-card.pending .icon{background:#fff4e0;color:#b26a00;}
+  .stat-card.approved .icon{background:#e6f4ef;color:var(--primary);}
+  .stat-card.rejected .icon{background:#ffebee;color:var(--danger);}
+  .stat-card.trips .icon{background:#e3f2fd;color:var(--info);}
+  .stat-card.reports .icon{background:#f3e5f5;color:#6a1b9a;}
+
+  .section-header{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;}
+  .section-header h2{font-size:1.15rem;font-weight:700;}
+
+  .filters{
+    display:flex;flex-wrap:wrap;gap:10px;background:#fff;
+    border:1px solid var(--border);border-radius:var(--radius);padding:14px;
+    margin-bottom:16px;
+  }
+  .filters input,.filters select{
+    padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;
+    font-size:.9rem;outline:none;background:#fbfdfc;
+  }
+  .filters input:focus,.filters select:focus{border-color:var(--primary);}
+  .filters input{flex:1;min-width:180px;}
+
+  .table-wrap{
+    background:#fff;border:1px solid var(--border);
+    border-radius:var(--radius);overflow:hidden;overflow-x:auto;
+  }
+  .tbl{width:100%;border-collapse:collapse;font-size:.9rem;}
+  .tbl th{
+    background:#f8fafb;text-align:right;padding:12px 14px;
+    font-weight:700;font-size:.82rem;color:var(--muted);
+    border-bottom:1px solid var(--border);white-space:nowrap;
+  }
+  .tbl td{padding:12px 14px;border-bottom:1px solid #f1f4f6;vertical-align:middle;}
+  .tbl tr:last-child td{border-bottom:none;}
+  .tbl tr:hover{background:#fbfdfc;}
+  .tbl .actions{display:flex;gap:6px;flex-wrap:wrap;}
+
+  .code-pill{
+    display:inline-block;background:var(--primary-light);color:var(--primary);
+    font-family:monospace;font-weight:800;padding:4px 10px;border-radius:8px;
+    font-size:.88rem;letter-spacing:1px;
+  }
+
+  .badge-status{display:inline-block;padding:3px 10px;border-radius:999px;font-size:.76rem;font-weight:700;}
+  .badge-status.pending{background:#fff4e0;color:#b26a00;}
+  .badge-status.approved{background:#e6f4ef;color:var(--primary);}
+  .badge-status.rejected{background:#ffebee;color:var(--danger);}
+  .badge-status.active{background:#e3f2fd;color:var(--info);}
+  .badge-status.completed{background:#e6f4ef;color:var(--primary);}
+  .badge-status.cancelled{background:#fbe9e7;color:#bf360c;}
+  .badge-status.new{background:#e3f2fd;color:var(--info);}
+  .badge-status.under_review{background:#fff4e0;color:#b26a00;}
+  .badge-status.resolved{background:#e6f4ef;color:var(--primary);}
+  .badge-status.enabled{background:#e6f4ef;color:var(--primary);}
+  .badge-status.disabled{background:#eee;color:#555;}
+
+  .btn{
+    border:none;border-radius:8px;padding:8px 14px;font-size:.83rem;font-weight:600;
+    transition:.15s;display:inline-flex;align-items:center;gap:6px;
+  }
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .btn-primary{background:var(--primary);color:#fff;}
+  .btn-primary:hover:not(:disabled){background:var(--primary-dark);}
+  .btn-success{background:var(--success);color:#fff;}
+  .btn-success:hover:not(:disabled){background:#1b5e20;}
+  .btn-danger{background:var(--danger);color:#fff;}
+  .btn-danger:hover:not(:disabled){background:#8e0000;}
+  .btn-warn{background:var(--warn);color:#fff;}
+  .btn-info{background:var(--info);color:#fff;}
+  .btn-ghost{background:#f1f4f6;color:var(--text);}
+  .btn-ghost:hover:not(:disabled){background:#e2e8f0;}
+  .btn-sm{padding:5px 10px;font-size:.78rem;}
+
+  .empty{text-align:center;padding:50px 20px;color:var(--muted);}
+  .empty svg{width:60px;height:60px;opacity:.3;margin-bottom:12px;}
+  .empty p{font-size:.95rem;}
+
+  .loader{display:inline-block;width:18px;height:18px;border:2.5px solid rgba(11,107,82,.25);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .loading-overlay{position:fixed;inset:0;background:rgba(255,255,255,.7);display:none;align-items:center;justify-content:center;z-index:2000;backdrop-filter:blur(2px);}
+  .loading-overlay.show{display:flex;}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:1500;padding:16px;}
+  .modal-bg.show{display:flex;}
+  .modal{background:#fff;border-radius:14px;width:100%;max-width:640px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+  .modal.wide{max-width:900px;}
+  .modal-header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:2;}
+  .modal-header h3{font-size:1.05rem;}
+  .modal-close{background:transparent;border:none;font-size:1.5rem;color:var(--muted);padding:0 8px;line-height:1;}
+  .modal-body{padding:22px;}
+  .modal-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-start;flex-wrap:wrap;position:sticky;bottom:0;background:#fff;}
+  .detail-row{display:flex;gap:10px;margin-bottom:12px;font-size:.9rem;}
+  .detail-row .lbl{color:var(--muted);font-weight:600;min-width:120px;flex-shrink:0;}
+  .detail-row .val{word-break:break-word;flex:1;}
+
+  .image-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px;}
+  .image-card{background:#f8fafb;border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;}
+  .image-card .cap{font-size:.8rem;color:var(--muted);font-weight:600;margin-bottom:6px;}
+  .image-card img{width:100%;max-height:220px;object-fit:contain;border-radius:8px;background:#fff;cursor:zoom-in;}
+  .image-card a{display:inline-block;margin-top:6px;font-size:.78rem;color:var(--primary);}
+  .image-empty{text-align:center;padding:30px 10px;color:var(--muted);font-size:.85rem;background:#f8fafb;border:1px dashed var(--border);border-radius:10px;}
+
+  .form-field{margin-bottom:16px;}
+  .form-field label{display:block;font-weight:600;font-size:.9rem;margin-bottom:6px;}
+  .form-field input[type="text"],.form-field input[type="tel"],.form-field select,.form-field textarea{
+    width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:9px;
+    font-size:.95rem;outline:none;transition:.2s;background:#fbfdfc;
+  }
+  .form-field input:focus,.form-field select:focus,.form-field textarea:focus{
+    border-color:var(--primary);background:#fff;box-shadow:0 0 0 4px rgba(11,107,82,.12);
+  }
+  .form-field textarea{resize:vertical;min-height:80px;}
+
+  /* Radio buttons (خيارات الحذف) */
+  .radio-group{display:flex;flex-direction:column;gap:10px;margin-top:10px;}
+  .radio-option{
+    display:flex;gap:10px;align-items:flex-start;
+    padding:12px 14px;border:1.5px solid var(--border);
+    border-radius:10px;cursor:pointer;transition:.2s;
+    background:#fbfdfc;
+  }
+  .radio-option:hover{border-color:var(--primary);background:var(--primary-light);}
+  .radio-option input[type="radio"]{margin-top:4px;cursor:pointer;accent-color:var(--primary);}
+  .radio-option .txt{flex:1;font-size:.9rem;}
+  .radio-option .txt strong{display:block;margin-bottom:3px;}
+  .radio-option .txt small{color:var(--muted);font-size:.82rem;}
+
+  .toast-wrap{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:3000;display:flex;flex-direction:column;gap:10px;pointer-events:none;}
+  .toast{background:#222;color:#fff;padding:12px 20px;border-radius:10px;font-size:.9rem;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.25);animation:toast-in .25s ease-out;pointer-events:auto;max-width:90vw;}
+  .toast.success{background:var(--success);}
+  .toast.error{background:var(--danger);}
+  .toast.info{background:var(--info);}
+  @keyframes toast-in{from{opacity:0;transform:translateY(-10px);}to{opacity:1;transform:none;}}
+
+  .qr-box{text-align:center;padding:16px;background:#fff;border:1px solid var(--border);border-radius:10px;}
+  .qr-box img{max-width:220px;width:100%;}
+  .qr-box .id{font-family:monospace;font-size:.8rem;color:var(--muted);margin-top:8px;word-break:break-all;}
+
+  #mapContainer{height:450px;width:100%;border-radius:12px;border:1px solid var(--border);}
+  .map-info-bar{display:flex;gap:16px;flex-wrap:wrap;padding:12px 16px;background:#f8fafb;border-radius:10px;margin-bottom:12px;font-size:.85rem;}
+  .map-info-bar .item{display:flex;align-items:center;gap:6px;}
+  .map-info-bar .dot{width:10px;height:10px;border-radius:50%;}
+  .map-info-bar .dot.green{background:#2e7d32;}
+  .map-info-bar .dot.red{background:#c62828;}
+  .map-info-bar .dot.blue{background:#1565c0;}
+
+  .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;z-index:5000;padding:20px;}
+  .lightbox.show{display:flex;}
+  .lightbox img{max-width:95vw;max-height:95vh;border-radius:10px;}
+  .lightbox .close-lightbox{position:absolute;top:20px;inset-inline-end:20px;background:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:1rem;font-weight:700;cursor:pointer;}
+
+  @media(max-width:860px){
+    .sidebar{transform:translateX(100%);}
+    .sidebar.open{transform:translateX(0);}
+    .main{margin-inline-end:0;padding:16px;}
+    .menu-toggle{display:inline-flex;}
+    .topbar h1{font-size:1.15rem;}
+    .tbl{font-size:.82rem;}
+    .tbl th,.tbl td{padding:8px 10px;}
+    #mapContainer{height:320px;}
+    .image-grid{grid-template-columns:1fr;}
+  }
+
+  @media print{
+    body *{visibility:hidden;}
+    #printArea, #printArea *{visibility:visible;}
+    #printArea{position:absolute;top:0;right:0;left:0;}
+  }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay"><div class="loader"></div></div>
+<div class="toast-wrap" id="toastWrap"></div>
+
+<div class="lightbox" id="lightbox">
+  <button class="close-lightbox" id="closeLightbox">× إغلاق</button>
+  <img id="lightboxImg" src="" alt="" />
+</div>
+
+<div class="login-wrap" id="loginWrap">
+  <form class="login-card" id="loginForm">
+    <div class="login-logo">
+      <span class="shield"></span>
+      <h1>لزقة أمان</h1>
+    </div>
+    <h2>لوحة التحكم — تسجيل دخول الأدمن</h2>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-field">
+      <label for="loginEmail">البريد الإلكتروني</label>
+      <input type="email" id="loginEmail" autocomplete="username" required />
+    </div>
+    <div class="login-field">
+      <label for="loginPass">كلمة المرور</label>
+      <input type="password" id="loginPass" autocomplete="current-password" required />
+    </div>
+    <button type="submit" class="login-btn" id="loginBtn">تسجيل الدخول</button>
+  </form>
+</div>
+
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span class="shield"></span>
+      <div><h2>لزقة أمان</h2><p>لوحة التحكم</p></div>
+    </div>
+    <ul class="nav">
+      <li><button data-page="overview" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg> الرئيسية</button></li>
+      <li><button data-page="requests"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6M9 11h2"/></svg> طلبات التسجيل <span class="badge" id="badgeRequests">0</span></button></li>
+      <li><button data-page="drivers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg> السائقون <span class="badge" id="badgeDrivers">0</span></button></li>
+      <li><button data-page="qr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM21 14v3M14 21h3M21 21h.01"/></svg> إدارة QR</button></li>
+      <li><button data-page="trips"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> الرحلات <span class="badge" id="badgeTrips">0</span></button></li>
+      <li><button data-page="reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h6M8 17h4"/></svg> البلاغات <span class="badge" id="badgeReports">0</span></button></li>
+      <li><button data-page="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h4"/></svg> سجل الإجراءات</button></li>
+      <li><button id="logoutBtn" class="logout-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg> تسجيل الخروج</button></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <button class="menu-toggle" id="menuToggle">☰</button>
+      <h1 id="pageTitle">الرئيسية</h1>
+      <div class="spacer"></div>
+      <div class="admin-chip" id="adminChip">—</div>
+    </div>
+
+    <!-- Overview -->
+    <section class="page active" id="page-overview">
+      <div class="stats-grid">
+        <div class="stat-card pending"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><span class="label">طلبات قيد المراجعة</span><span class="value" id="s-pending">—</span></div>
+        <div class="stat-card approved"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></div><span class="label">سائقون مقبولون</span><span class="value" id="s-approved">—</span></div>
+        <div class="stat-card rejected"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg></div><span class="label">طلبات مرفوضة</span><span class="value" id="s-rejected">—</span></div>
+        <div class="stat-card trips"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><span class="label">إجمالي الرحلات</span><span class="value" id="s-trips">—</span></div>
+        <div class="stat-card reports"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h6"/></svg></div><span class="label">إجمالي البلاغات</span><span class="value" id="s-reports">—</span></div>
+      </div>
+
+      <div class="section-header"><h2>آخر طلبات التسجيل</h2></div>
+      <div class="table-wrap" style="margin-bottom:24px;">
+        <table class="tbl"><thead><tr><th>الاسم</th><th>الهاتف</th><th>الحالة</th><th>التاريخ</th></tr></thead>
+          <tbody id="recentRequests"><tr><td colspan="4" class="empty"><p>لا توجد بيانات</p></td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="section-header"><h2>آخر الرحلات</h2></div>
+      <div class="table-wrap">
+        <table class="tbl"><thead><tr><th>كود الرحلة</th><th>السائق</th><th>الحالة</th><th>التاريخ</th></tr></thead>
+          <tbody id="recentTrips"><tr><td colspan="4" class="empty"><p>لا توجد بيانات</p></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Requests -->
+    <section class="page" id="page-requests">
+      <div class="filters">
+        <input type="text" id="reqSearch" placeholder="ابحث بالاسم أو الهاتف..." />
+        <select id="reqStatus"><option value="">كل الحالات</option><option value="pending">قيد المراجعة</option><option value="approved">مقبول</option><option value="rejected">مرفوض</option></select>
+        <select id="reqSort"><option value="newest">الأحدث أولاً</option><option value="oldest">الأقدم أولاً</option></select>
+      </div>
+      <div class="table-wrap">
+        <table class="tbl"><thead><tr><th>الاسم</th><th>الهاتف</th><th>الصور</th><th>التاريخ</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+          <tbody id="requestsBody"><tr><td colspan="6" class="empty"><p>لا توجد طلبات</p></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Drivers -->
+    <section class="page" id="page-drivers">
+      <div class="filters">
+        <input type="text" id="drvSearch" placeholder="ابحث بالاسم أو الهاتف أو كود السائق..." />
+        <select id="drvStatus"><option value="">كل الحالات</option><option value="enabled">مفعّل</option><option value="disabled">موقوف</option></select>
+      </div>
+      <div class="table-wrap">
+        <table class="tbl"><thead><tr><th>كود السائق</th><th>الاسم</th><th>الهاتف</th><th>QR</th><th>تاريخ التسجيل</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+          <tbody id="driversBody"><tr><td colspan="7" class="empty"><p>لا يوجد سائقون</p></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- QR -->
+    <section class="page" id="page-qr">
+      <div class="filters">
+        <input type="text" id="qrSearch" placeholder="ابحث بالاسم أو كود السائق..." />
+      </div>
+      <div class="table-wrap">
+        <table class="tbl"><thead><tr><th>كود السائق</th><th>الاسم</th><th>QR</th><th>معاينة</th><th>إجراءات</th></tr></thead>
+          <tbody id="qrBody"><tr><td colspan="5" class="empty"><p>لا توجد أكواد</p></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Trips -->
+    <section class="page" id="page-trips">
+      <div class="filters">
+        <input type="text" id="tripSearch" placeholder="ابحث بكود الرحلة أو كود السائق..." />
+        <select id="tripStatus"><option value="">كل الحالات</option><option value="active">جارية</option><option value="completed">مكتملة</option><option value="cancelled">ملغاة</option></select>
+        <button class="btn btn-ghost" id="exportTripsBtn">تصدير CSV</button>
+      </div>
+      <div class="table-wrap">
+        <table class="tbl"><thead><tr><th>كود الرحلة</th><th>السائق</th><th>البداية</th><th>النهاية</th><th>المدة</th><th>النقاط</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+          <tbody id="tripsBody"><tr><td colspan="8" class="empty"><p>لا توجد رحلات</p></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Reports -->
+    <section class="page" id="page-reports">
+      <div class="filters">
+        <input type="text" id="repSearch" placeholder="ابحث في الوصف..." />
+        <select id="repStatus"><option value="">كل الحالات</option><option value="new">جديد</option><option value="under_review">قيد المراجعة</option><option value="resolved">تم الحل</option></select>
+      </div>
+      <div class="table-wrap">
+        <table class="tbl"><thead><tr><th>#</th><th>الرحلة/السائق</th><th>التصنيف</th><th>الوصف</th><th>التاريخ</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+          <tbody id="reportsBody"><tr><td colspan="7" class="empty"><p>لا توجد بلاغات</p></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Logs -->
+    <section class="page" id="page-logs">
+      <div class="filters">
+        <div style="flex:1;display:flex;align-items:center;gap:8px;color:var(--muted);font-size:.88rem;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          يتم حذف السجلات الأقدم من <strong style="color:var(--primary);">30 يومًا</strong> تلقائيًا.
+        </div>
+        <button class="btn btn-danger" id="clearAllLogsBtn">حذف كل السجلات</button>
+      </div>
+      <div class="table-wrap">
+        <table class="tbl"><thead><tr><th>التاريخ</th><th>الإجراء</th><th>بواسطة</th><th>سجل مرتبط</th></tr></thead>
+          <tbody id="logsBody"><tr><td colspan="4" class="empty"><p>لا توجد سجلات</p></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal" id="modalBox">
+    <div class="modal-header">
+      <h3 id="modalTitle">تفاصيل</h3>
+      <button class="modal-close" id="modalClose">×</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer" id="modalFooter"></div>
+  </div>
+</div>
+
+<div id="printArea" style="display:none;"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<script>
+/* ============================================================
+   Firebase
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyBjpbZHdumCpG-klvaJAkNBfdoghlG-cTU",
+  authDomain: "safety-sticker-30a65.firebaseapp.com",
+  projectId: "safety-sticker-30a65",
+  storageBucket: "safety-sticker-30a65.firebasestorage.app",
+  messagingSenderId: "561785399838",
+  appId: "1:202785399838:web:8b6115e9724698aba99c0f",
+  measurementId: "G-1YWMRYJYM0"
 };
 
-async function cleanupOldLogs(env) {
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+const PASSENGER_SITE_URL = "https://safety-sticker.github.io/Security-sticker-user/";
+
+/* ============================================================
+   أدوات مساعدة
+   ============================================================ */
+const $ = (id) => document.getElementById(id);
+const els = {
+  loading: $("loadingOverlay"),
+  toastWrap: $("toastWrap"),
+  loginWrap: $("loginWrap"),
+  loginForm: $("loginForm"),
+  loginError: $("loginError"),
+  loginBtn: $("loginBtn"),
+  app: $("app"),
+  sidebar: $("sidebar"),
+  menuToggle: $("menuToggle"),
+  pageTitle: $("pageTitle"),
+  adminChip: $("adminChip"),
+  modalBg: $("modalBg"),
+  modalBox: $("modalBox"),
+  modalTitle: $("modalTitle"),
+  modalBody: $("modalBody"),
+  modalFooter: $("modalFooter"),
+  lightbox: $("lightbox"),
+  lightboxImg: $("lightboxImg")
+};
+
+function showLoading(v){ els.loading.classList.toggle("show", v); }
+
+function toast(message, type="info"){
+  const t = document.createElement("div");
+  t.className = "toast " + type;
+  t.textContent = message;
+  els.toastWrap.appendChild(t);
+  setTimeout(()=>{ t.style.opacity="0"; t.style.transition="opacity .3s"; }, 2800);
+  setTimeout(()=> t.remove(), 3200);
+}
+
+function escapeHtml(s){
+  if(s === null || s === undefined) return "";
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function fmtDate(ts){
+  if(!ts) return "—";
+  let d;
+  if(ts.toDate) d = ts.toDate();
+  else if(ts instanceof Date) d = ts;
+  else if(typeof ts === "number") d = new Date(ts);
+  else return "—";
+  return d.toLocaleString("ar-EG",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+}
+
+function fmtDuration(start, end){
+  if(!start || !end) return "—";
+  const s = start.toDate ? start.toDate() : new Date(start);
+  const e = end.toDate ? end.toDate() : new Date(end);
+  const diff = Math.floor((e - s) / 1000);
+  if(diff < 0 || isNaN(diff)) return "—";
+  const h = Math.floor(diff/3600);
+  const m = Math.floor((diff%3600)/60);
+  if(h > 0) return `${h} س ${m} د`;
+  return `${m} د`;
+}
+
+/* ============================================================
+   Lightbox
+   ============================================================ */
+function openLightbox(src){
+  els.lightboxImg.src = src;
+  els.lightbox.classList.add("show");
+}
+$("closeLightbox").addEventListener("click", ()=> els.lightbox.classList.remove("show"));
+els.lightbox.addEventListener("click", (e)=>{ if(e.target === els.lightbox) els.lightbox.classList.remove("show"); });
+
+/* ============================================================
+   توليد كود السائق (D-XXXX)
+   ============================================================ */
+function generateDriverCode(){
+  return `D-${Math.floor(1000 + Math.random() * 9000)}`;
+}
+
+async function generateUniqueDriverCode(){
+  for(let i = 0; i < 15; i++){
+    const code = generateDriverCode();
+    const exists = await db.collection("drivers")
+      .where("driverCode", "==", code)
+      .limit(1)
+      .get();
+    if(exists.empty) return code;
+  }
+  return `D-${Math.floor(10000 + Math.random() * 90000)}`;
+}
+
+function buildPassengerUrl(driverCode){
+  const base = PASSENGER_SITE_URL.endsWith("/")
+    ? PASSENGER_SITE_URL
+    : PASSENGER_SITE_URL + "/";
+  return `${base}?driver=${encodeURIComponent(driverCode)}`;
+}
+
+function qrImageUrl(text, size=220){
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}&margin=8`;
+}
+
+/* ============================================================
+   تسجيل الدخول
+   ============================================================ */
+els.loginForm.addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  els.loginError.classList.remove("show");
+  els.loginBtn.disabled = true;
+  els.loginBtn.textContent = "جارٍ الدخول...";
   try {
-    // الحصول على Firebase access token
-    const accessToken = await getAccessToken(env);
+    await auth.signInWithEmailAndPassword($("loginEmail").value.trim(), $("loginPass").value);
+  } catch(err){
+    let msg = "تعذّر تسجيل الدخول. تحقق من البيانات.";
+    if(err.code === "auth/user-not-found" || err.code === "auth/wrong-password" || err.code === "auth/invalid-credential")
+      msg = "البريد الإلكتروني أو كلمة المرور غير صحيحة.";
+    else if(err.code === "auth/too-many-requests")
+      msg = "محاولات كثيرة. حاول لاحقًا.";
+    else if(err.code === "auth/invalid-email")
+      msg = "صيغة البريد غير صحيحة.";
+    els.loginError.textContent = msg;
+    els.loginError.classList.add("show");
+  } finally {
+    els.loginBtn.disabled = false;
+    els.loginBtn.textContent = "تسجيل الدخول";
+  }
+});
 
-    // حساب التاريخ (30 يوم مضت)
-    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+$("logoutBtn").addEventListener("click", async ()=>{
+  if(confirm("هل تريد تسجيل الخروج؟")){
+    await auth.signOut();
+  }
+});
 
-    // 1) الاستعلام عن السجلات القديمة (Firestore REST API)
-    const queryUrl = `https://firestore.googleapis.com/v1/projects/${env.FB_PROJECT_ID}/databases/(default)/documents:runQuery`;
+auth.onAuthStateChanged(user => {
+  if(user){
+    els.loginWrap.style.display = "none";
+    els.app.classList.add("show");
+    els.adminChip.textContent = user.email || "أدمن";
+    startDashboard();
+  } else {
+    els.loginWrap.style.display = "flex";
+    els.app.classList.remove("show");
+    stopDashboard();
+  }
+});
 
-    const queryBody = {
-      structuredQuery: {
-        from: [{ collectionId: "adminLogs" }],
-        where: {
-          fieldFilter: {
-            field: { fieldPath: "createdAt" },
-            op: "LESS_THAN",
-            value: { timestampValue: cutoff.toISOString() }
-          }
-        },
-        limit: 500
-      }
-    };
-
-    const res = await fetch(queryUrl, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(queryBody)
+/* ============================================================
+   سجل الأدمن
+   ============================================================ */
+async function logAdmin(action, refId, extra={}){
+  try{
+    await db.collection("adminLogs").add({
+      action,
+      refId: refId || null,
+      adminEmail: auth.currentUser ? auth.currentUser.email : null,
+      adminUid: auth.currentUser ? auth.currentUser.uid : null,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      ...extra
     });
+  } catch(e){ console.warn("log failed", e); }
+}
 
-    const data = await res.json();
-    if (!Array.isArray(data)) return { deleted: 0 };
-
-    const docs = data.filter(d => d.document).map(d => d.document.name);
-    if (docs.length === 0) return { deleted: 0 };
-
-    // 2) حذف كل سجل
-    let deleted = 0;
-    for (const docName of docs) {
-      const deleteRes = await fetch(
-        `https://firestore.googleapis.com/v1/${docName}`,
-        {
-          method: "DELETE",
-          headers: { "Authorization": `Bearer ${accessToken}` }
-        }
-      );
-      if (deleteRes.ok) deleted++;
-    }
-
-    return { deleted, total: docs.length };
-  } catch (err) {
-    console.error("cleanup error:", err);
-    return { error: err.message };
+/* ============================================================
+   الحذف التلقائي للسجلات القديمة (>30 يوم)
+   ============================================================ */
+async function cleanupOldLogs(){
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const snap = await db.collection("adminLogs")
+      .where("createdAt", "<", thirtyDaysAgo)
+      .limit(500)
+      .get();
+    if(snap.empty) return 0;
+    const batch = db.batch();
+    snap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    return snap.size;
+  } catch(e){
+    console.warn("cleanup old logs failed", e);
+    return 0;
   }
 }
 
-/**
- * الحصول على access token عبر JWT
- * يستخدم Service Account من Secrets
- */
-async function getAccessToken(env) {
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", typ: "JWT" };
-  const payload = {
-    iss: env.FB_CLIENT_EMAIL,
-    scope: "https://www.googleapis.com/auth/datastore",
-    aud: "https://oauth2.googleapis.com/token",
-    iat: now,
-    exp: now + 3600
-  };
+/* ============================================================
+   التنقل
+   ============================================================ */
+const PAGE_TITLES = {
+  overview:"الرئيسية", requests:"طلبات التسجيل", drivers:"السائقون",
+  qr:"إدارة QR", trips:"الرحلات", reports:"البلاغات", logs:"سجل الإجراءات"
+};
 
-  const encodedHeader = base64UrlEncode(JSON.stringify(header));
-  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
-  const unsignedToken = `${encodedHeader}.${encodedPayload}`;
+document.querySelectorAll(".nav button[data-page]").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".nav button[data-page]").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    const page = btn.dataset.page;
+    document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+    $("page-"+page).classList.add("active");
+    els.pageTitle.textContent = PAGE_TITLES[page] || "";
+    if(window.innerWidth <= 860) els.sidebar.classList.remove("open");
+  });
+});
 
-  // توقيع JWT باستخدام crypto.subtle
-  const privateKey = await importPrivateKey(env.FB_PRIVATE_KEY);
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    privateKey,
-    new TextEncoder().encode(unsignedToken)
-  );
+els.menuToggle.addEventListener("click", ()=>els.sidebar.classList.toggle("open"));
 
-  const encodedSignature = base64UrlEncode(signature);
-  const jwt = `${unsignedToken}.${encodedSignature}`;
+/* ============================================================
+   Modal
+   ============================================================ */
+function openModal(title, bodyHtml, footerButtons=[], wide=false){
+  els.modalTitle.textContent = title;
+  els.modalBody.innerHTML = bodyHtml;
+  els.modalFooter.innerHTML = "";
+  footerButtons.forEach(b=>{
+    const btn = document.createElement("button");
+    btn.className = "btn " + (b.className||"btn-ghost");
+    btn.textContent = b.label;
+    btn.addEventListener("click", ()=> b.onClick && b.onClick());
+    els.modalFooter.appendChild(btn);
+  });
+  els.modalBox.classList.toggle("wide", !!wide);
+  els.modalBg.classList.add("show");
+}
+function closeModal(){ els.modalBg.classList.remove("show"); }
+$("modalClose").addEventListener("click", closeModal);
+els.modalBg.addEventListener("click", e=>{ if(e.target === els.modalBg) closeModal(); });
 
-  // تبادل JWT بـ access token
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt
-    })
+/* ============================================================
+   الاستماع الحي
+   ============================================================ */
+let unsubs = [];
+let cache = { requests:[], drivers:[], trips:[], reports:[], logs:[] };
+
+function startDashboard(){
+  showLoading(true);
+
+  // حذف السجلات القديمة أولاً
+  cleanupOldLogs().then(n=>{
+    if(n > 0) toast("تم حذف " + n + " سجل قديم تلقائيًا.", "info");
   });
 
-  const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) {
-    throw new Error("Failed to get access token: " + JSON.stringify(tokenData));
+  unsubs.push(db.collection("driverRequests").orderBy("createdAt","desc").onSnapshot(snap=>{
+    cache.requests = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderRequests(); renderOverview(); updateBadges();
+  }, err=>{ console.error(err); toast("تعذّر تحميل طلبات التسجيل: " + err.message, "error"); showLoading(false); }));
+
+  unsubs.push(db.collection("drivers").orderBy("createdAt","desc").onSnapshot(snap=>{
+    cache.drivers = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderDrivers(); renderQR(); renderOverview(); updateBadges();
+  }, err=>{ console.error(err); toast("تعذّر تحميل السائقين: " + err.message, "error"); }));
+
+  unsubs.push(db.collection("trips").orderBy("createdAt","desc").limit(500).onSnapshot(snap=>{
+    cache.trips = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderTrips(); renderOverview(); updateBadges();
+  }, err=>{ console.error(err); toast("تعذّر تحميل الرحلات: " + err.message, "error"); }));
+
+  unsubs.push(db.collection("reports").orderBy("createdAt","desc").limit(500).onSnapshot(snap=>{
+    cache.reports = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderReports(); renderOverview(); updateBadges();
+  }, err=>{ console.error(err); toast("تعذّر تحميل البلاغات: " + err.message, "error"); }));
+
+  unsubs.push(db.collection("adminLogs").orderBy("createdAt","desc").limit(200).onSnapshot(snap=>{
+    cache.logs = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderLogs();
+  }, err=>{ console.error(err); }));
+
+  setTimeout(()=> showLoading(false), 500);
+}
+
+function stopDashboard(){
+  unsubs.forEach(u=>{ try{u();}catch(_){} });
+  unsubs = [];
+  cache = { requests:[], drivers:[], trips:[], reports:[], logs:[] };
+}
+
+/* ============================================================
+   Overview
+   ============================================================ */
+function renderOverview(){
+  const r = cache.requests;
+  $("s-pending").textContent = r.filter(x=>x.status === "pending").length;
+  $("s-approved").textContent = r.filter(x=>x.status === "approved").length;
+  $("s-rejected").textContent = r.filter(x=>x.status === "rejected").length;
+  $("s-trips").textContent = cache.trips.length;
+  $("s-reports").textContent = cache.reports.length;
+
+  const recentReqs = cache.requests.slice(0,5);
+  $("recentRequests").innerHTML = recentReqs.length === 0
+    ? `<tr><td colspan="4" class="empty"><p>لا توجد بيانات</p></td></tr>`
+    : recentReqs.map(x=>`
+      <tr>
+        <td>${escapeHtml(x.fullName || "—")}</td>
+        <td>${escapeHtml(x.phone || "—")}</td>
+        <td><span class="badge-status ${escapeHtml(x.status||"pending")}">${statusLabel(x.status)}</span></td>
+        <td>${fmtDate(x.createdAt)}</td>
+      </tr>`).join("");
+
+  const recentTrips = cache.trips.slice(0,5);
+  $("recentTrips").innerHTML = recentTrips.length === 0
+    ? `<tr><td colspan="4" class="empty"><p>لا توجد بيانات</p></td></tr>`
+    : recentTrips.map(t=>`
+      <tr>
+        <td><span class="code-pill">${escapeHtml(t.tripCode || t.id)}</span></td>
+        <td>${escapeHtml(driverName(t.driverId) || t.driverName || "—")}</td>
+        <td><span class="badge-status ${escapeHtml(t.status||"active")}">${statusLabel(t.status)}</span></td>
+        <td>${fmtDate(t.createdAt)}</td>
+      </tr>`).join("");
+}
+
+function updateBadges(){
+  $("badgeRequests").textContent = cache.requests.filter(x=>x.status === "pending").length;
+  $("badgeDrivers").textContent = cache.drivers.length;
+  $("badgeTrips").textContent = cache.trips.length;
+  $("badgeReports").textContent = cache.reports.filter(r => r.status === "new").length;
+}
+
+function statusLabel(s){
+  const map = {
+    pending:"قيد المراجعة", approved:"مقبول", rejected:"مرفوض",
+    active:"جارية", completed:"مكتملة", cancelled:"ملغاة",
+    new:"جديد", under_review:"قيد المراجعة", resolved:"تم الحل",
+    enabled:"مفعّل", disabled:"موقوف"
+  };
+  return map[s] || s || "—";
+}
+
+function driverName(id){
+  if(!id) return null;
+  const d = cache.drivers.find(x=>x.id === id);
+  return d ? d.fullName : null;
+}
+
+/* ============================================================
+   Requests
+   ============================================================ */
+function filteredRequests(){
+  const q = ($("reqSearch").value || "").trim().toLowerCase();
+  const st = $("reqStatus").value;
+  const sort = $("reqSort").value;
+  let list = cache.requests.slice();
+  if(q) list = list.filter(x =>
+    (x.fullName || "").toLowerCase().includes(q) || (x.phone || "").includes(q));
+  if(st) list = list.filter(x => x.status === st);
+  list.sort((a,b)=>{
+    const ta = a.createdAt && a.createdAt.toDate ? a.createdAt.toDate().getTime() : 0;
+    const tb = b.createdAt && b.createdAt.toDate ? b.createdAt.toDate().getTime() : 0;
+    return sort === "newest" ? tb - ta : ta - tb;
+  });
+  return list;
+}
+
+function renderRequests(){
+  const list = filteredRequests();
+  const tbody = $("requestsBody");
+  if(list.length === 0){
+    tbody.innerHTML = `<tr><td colspan="6" class="empty"><p>لا توجد طلبات مطابقة</p></td></tr>`;
+    return;
   }
-  return tokenData.access_token;
+  tbody.innerHTML = list.map(r=>`
+    <tr>
+      <td>${escapeHtml(r.fullName || "—")}</td>
+      <td>${escapeHtml(r.phone || "—")}</td>
+      <td>
+        ${r.idCardUrl ? `<a href="${escapeHtml(r.idCardUrl)}" target="_blank" class="btn btn-ghost btn-sm">بطاقة</a>` : "—"}
+        ${r.plateImageUrl ? `<a href="${escapeHtml(r.plateImageUrl)}" target="_blank" class="btn btn-ghost btn-sm">لوحة</a>` : ""}
+      </td>
+      <td>${fmtDate(r.createdAt)}</td>
+      <td><span class="badge-status ${escapeHtml(r.status||"pending")}">${statusLabel(r.status)}</span></td>
+      <td class="actions">
+        <button class="btn btn-ghost btn-sm" data-act="view" data-id="${r.id}">تفاصيل</button>
+        ${r.status === "pending" ? `
+          <button class="btn btn-success btn-sm" data-act="approve" data-id="${r.id}">قبول</button>
+          <button class="btn btn-danger btn-sm" data-act="reject" data-id="${r.id}">رفض</button>
+        ` : ""}
+        <button class="btn btn-danger btn-sm" data-act="delete" data-id="${r.id}">حذف</button>
+      </td>
+    </tr>
+  `).join("");
+
+  tbody.querySelectorAll("button[data-act]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const act = btn.dataset.act;
+      const id = btn.dataset.id;
+      if(act === "view") viewRequest(id);
+      else if(act === "approve") confirmApprove(id);
+      else if(act === "reject") confirmReject(id);
+      else if(act === "delete") confirmDeleteRequest(id);
+    });
+  });
 }
 
-async function importPrivateKey(pemKey) {
-  const pemContents = pemKey
-    .replace(/-----BEGIN PRIVATE KEY-----/, "")
-    .replace(/-----END PRIVATE KEY-----/, "")
-    .replace(/\\n/g, "")
-    .replace(/\s/g, "");
+$("reqSearch").addEventListener("input", renderRequests);
+$("reqStatus").addEventListener("change", renderRequests);
+$("reqSort").addEventListener("change", renderRequests);
 
-  const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
-
-  return await crypto.subtle.importKey(
-    "pkcs8",
-    binaryDer.buffer,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
+function imageBlock(url, label){
+  if(!url) return `<div class="image-empty">لا توجد صورة</div>`;
+  return `
+    <div class="image-card">
+      <div class="cap">${label}</div>
+      <img src="${escapeHtml(url)}" alt="${label}" onclick="openLightbox('${escapeHtml(url)}')" />
+      <a href="${escapeHtml(url)}" target="_blank">فتح في تبويب جديد</a>
+    </div>`;
 }
 
-function base64UrlEncode(data) {
-  let str;
-  if (data instanceof ArrayBuffer) {
-    str = btoa(String.fromCharCode(...new Uint8Array(data)));
-  } else {
-    str = btoa(data);
+function viewRequest(id){
+  const r = cache.requests.find(x=>x.id === id);
+  if(!r) return;
+  const html = `
+    <div class="detail-row"><span class="lbl">الاسم الثلاثي:</span><span class="val">${escapeHtml(r.fullName||"—")}</span></div>
+    <div class="detail-row"><span class="lbl">رقم الهاتف:</span><span class="val">${escapeHtml(r.phone||"—")}</span></div>
+    <div class="detail-row"><span class="lbl">الكود المؤقت:</span><span class="val"><span class="code-pill">${escapeHtml(r.pendingDriverCode||"—")}</span></span></div>
+    <div class="detail-row"><span class="lbl">الحالة:</span><span class="val"><span class="badge-status ${escapeHtml(r.status||"pending")}">${statusLabel(r.status)}</span></span></div>
+    <div class="detail-row"><span class="lbl">تاريخ الطلب:</span><span class="val">${fmtDate(r.createdAt)}</span></div>
+    <div class="image-grid">
+      ${imageBlock(r.idCardUrl, "صورة البطاقة")}
+      ${imageBlock(r.plateImageUrl, "صورة اللوحة")}
+    </div>
+  `;
+  const buttons = [];
+  if(r.status === "pending"){
+    buttons.push({label:"قبول", className:"btn-success", onClick:()=>{ closeModal(); confirmApprove(id); }});
+    buttons.push({label:"رفض", className:"btn-danger", onClick:()=>{ closeModal(); confirmReject(id); }});
   }
-  return str.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  buttons.push({label:"حذف", className:"btn-danger", onClick:()=>{ closeModal(); confirmDeleteRequest(id); }});
+  buttons.push({label:"إغلاق", className:"btn-ghost", onClick: closeModal});
+  openModal("تفاصيل طلب التسجيل", html, buttons, true);
 }
+
+function confirmApprove(id){
+  const r = cache.requests.find(x=>x.id === id);
+  if(!r) return;
+  openModal("تأكيد قبول الطلب",
+    `<p>هل أنت متأكد من قبول طلب السائق <strong>${escapeHtml(r.fullName||"")}</strong>؟</p>
+     <p style="margin-top:10px;color:#6b7280;font-size:.85rem;">سيتم إنشاء سجل سائق جديد بـ QR خاص به باستخدام الكود المؤقت <span class="code-pill">${escapeHtml(r.pendingDriverCode||"")}</span>.</p>`,
+    [
+      {label:"تأكيد القبول", className:"btn-success", onClick:()=>{ closeModal(); approveRequest(id); }},
+      {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
+    ]);
+}
+
+function confirmReject(id){
+  const r = cache.requests.find(x=>x.id === id);
+  if(!r) return;
+  const html = `
+    <p>هل تريد رفض طلب السائق <strong>${escapeHtml(r.fullName||"")}</strong>؟</p>
+    <div style="margin-top:12px;">
+      <label style="display:block;font-weight:600;font-size:.9rem;margin-bottom:6px;">سبب الرفض (اختياري):</label>
+      <textarea id="rejectReason" rows="3" style="width:100%;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:inherit;"></textarea>
+    </div>`;
+  openModal("تأكيد رفض الطلب", html, [
+    {label:"تأكيد الرفض", className:"btn-danger", onClick:()=>{
+      const reason = ($("rejectReason").value || "").trim();
+      closeModal();
+      rejectRequest(id, reason);
+    }},
+    {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
+  ]);
+}
+
+function confirmDeleteRequest(id){
+  const r = cache.requests.find(x=>x.id === id);
+  if(!r) return;
+  openModal("تأكيد حذف الطلب",
+    `<p>هل أنت متأكد من حذف طلب التسجيل الخاص بـ <strong>${escapeHtml(r.fullName||"")}</strong>؟</p>
+     <p style="margin-top:10px;color:#c62828;font-size:.85rem;">⚠️ لا يمكن التراجع عن هذه العملية.</p>`,
+    [
+      {label:"تأكيد الحذف", className:"btn-danger", onClick:()=>{ closeModal(); deleteRequest(id); }},
+      {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
+    ]);
+}
+
+async function deleteRequest(id){
+  showLoading(true);
+  try {
+    const r = cache.requests.find(x=>x.id === id);
+    await db.collection("driverRequests").doc(id).delete();
+    await logAdmin("delete_request", id, { fullName: r ? r.fullName : null });
+    toast("تم حذف الطلب.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل الحذف: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function approveRequest(id){
+  const r = cache.requests.find(x=>x.id === id);
+  if(!r){ toast("لم يتم العثور على الطلب.", "error"); return; }
+  if(r.status === "approved"){ toast("الطلب مقبول بالفعل.", "info"); return; }
+
+  const existing = cache.drivers.find(d => d.phone === r.phone);
+  if(existing){
+    toast("يوجد سائق مسجل بنفس رقم الهاتف بالفعل.", "error");
+    return;
+  }
+
+  showLoading(true);
+  try{
+    // ✅ نستخدم الكود المؤقت من الطلب (لو موجود)
+    let driverCode = r.pendingDriverCode || null;
+
+    if(driverCode){
+      // نتأكد إنه مش مستخدم من سائق آخر
+      const conflict = await db.collection("drivers")
+        .where("driverCode", "==", driverCode).limit(1).get();
+      if(!conflict.empty){
+        driverCode = await generateUniqueDriverCode();
+      }
+    } else {
+      driverCode = await generateUniqueDriverCode();
+    }
+
+    const qrPayload = buildPassengerUrl(driverCode);
+
+    const batch = db.batch();
+    const newDriverRef = db.collection("drivers").doc();
+    batch.set(newDriverRef, {
+      driverCode,
+      fullName: r.fullName || "",
+      phone: r.phone || "",
+      idCardUrl: r.idCardUrl || null,
+      plateImageUrl: r.plateImageUrl || null,
+      qrUrl: qrPayload,
+      qrPayload,
+      status: "enabled",
+      sourceRequestId: r.id,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    batch.update(db.collection("driverRequests").doc(id), {
+      status: "approved",
+      approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      approvedBy: auth.currentUser ? auth.currentUser.email : null,
+      driverId: newDriverRef.id
+    });
+
+    await batch.commit();
+    await logAdmin("approve_request", r.id, { driverId: newDriverRef.id, driverCode });
+    toast("تم قبول الطلب. كود السائق: " + driverCode, "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل القبول: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function rejectRequest(id, reason){
+  showLoading(true);
+  try{
+    await db.collection("driverRequests").doc(id).update({
+      status: "rejected",
+      rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      rejectedBy: auth.currentUser ? auth.currentUser.email : null,
+      rejectionReason: reason || null
+    });
+    await logAdmin("reject_request", id, { reason });
+    toast("تم رفض الطلب.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل الرفض: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
+}
+
+/* ============================================================
+   Drivers
+   ============================================================ */
+function filteredDrivers(){
+  const q = ($("drvSearch").value || "").trim().toLowerCase();
+  const st = $("drvStatus").value;
+  let list = cache.drivers.slice();
+  if(q) list = list.filter(d =>
+    (d.fullName||"").toLowerCase().includes(q) ||
+    (d.phone||"").includes(q) ||
+    (d.driverCode||"").toLowerCase().includes(q));
+  if(st) list = list.filter(d => (d.status || "enabled") === st);
+  return list;
+}
+
+function renderDrivers(){
+  const list = filteredDrivers();
+  const tbody = $("driversBody");
+  if(list.length === 0){
+    tbody.innerHTML = `<tr><td colspan="7" class="empty"><p>لا يوجد سائقون مطابقون</p></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(d=>{
+    const qrContent = d.qrPayload || buildPassengerUrl(d.driverCode || "");
+    return `
+    <tr>
+      <td><span class="code-pill">${escapeHtml(d.driverCode||"—")}</span></td>
+      <td>${escapeHtml(d.fullName||"—")}</td>
+      <td>${escapeHtml(d.phone||"—")}</td>
+      <td>${qrContent ? `<img src="${qrImageUrl(qrContent,80)}" style="width:50px;height:50px;border-radius:6px;" />` : "—"}</td>
+      <td>${fmtDate(d.createdAt)}</td>
+      <td><span class="badge-status ${d.status==="disabled"?"disabled":"enabled"}">${d.status==="disabled"?"موقوف":"مفعّل"}</span></td>
+      <td class="actions">
+        <button class="btn btn-ghost btn-sm" data-act="view" data-id="${d.id}">تفاصيل</button>
+        <button class="btn btn-info btn-sm" data-act="edit" data-id="${d.id}">تعديل</button>
+        <button class="btn btn-ghost btn-sm" data-act="qr" data-id="${d.id}">QR</button>
+        <button class="btn btn-ghost btn-sm" data-act="trips" data-id="${d.id}">رحلات</button>
+        ${d.status==="disabled"
+          ? `<button class="btn btn-success btn-sm" data-act="enable" data-id="${d.id}">تفعيل</button>`
+          : `<button class="btn btn-warn btn-sm" data-act="disable" data-id="${d.id}">إيقاف</button>`}
+        <button class="btn btn-danger btn-sm" data-act="delete" data-id="${d.id}">حذف</button>
+      </td>
+    </tr>`;
+  }).join("");
+
+  tbody.querySelectorAll("button[data-act]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const act = btn.dataset.act;
+      const id = btn.dataset.id;
+      if(act === "view") viewDriver(id);
+      else if(act === "edit") editDriver(id);
+      else if(act === "qr") showDriverQr(id);
+      else if(act === "trips") showDriverTrips(id);
+      else if(act === "enable") toggleDriver(id, true);
+      else if(act === "disable") toggleDriver(id, false);
+      else if(act === "delete") confirmDeleteDriver(id);
+    });
+  });
+}
+
+$("drvSearch").addEventListener("input", renderDrivers);
+$("drvStatus").addEventListener("change", renderDrivers);
+
+function viewDriver(id){
+  const d = cache.drivers.find(x=>x.id === id);
+  if(!d) return;
+  const qrContent = d.qrPayload || buildPassengerUrl(d.driverCode || "");
+  const html = `
+    <div class="detail-row"><span class="lbl">كود السائق:</span><span class="val"><span class="code-pill">${escapeHtml(d.driverCode||"—")}</span></span></div>
+    <div class="detail-row"><span class="lbl">الاسم:</span><span class="val">${escapeHtml(d.fullName||"—")}</span></div>
+    <div class="detail-row"><span class="lbl">رقم الهاتف:</span><span class="val"><a href="tel:${escapeHtml(d.phone||"")}">${escapeHtml(d.phone||"—")}</a></span></div>
+    <div class="detail-row"><span class="lbl">الحالة:</span><span class="val">${d.status==="disabled"?"موقوف":"مفعّل"}</span></div>
+    <div class="detail-row"><span class="lbl">تاريخ التسجيل:</span><span class="val">${fmtDate(d.createdAt)}</span></div>
+    <div class="detail-row"><span class="lbl">رابط QR:</span><span class="val" style="font-family:monospace;font-size:.78rem;word-break:break-all;">${escapeHtml(qrContent)}</span></div>
+    <div style="margin-top:16px;">
+      <div style="font-weight:700;margin-bottom:8px;font-size:.95rem;">صور المستندات:</div>
+      <div class="image-grid">
+        ${imageBlock(d.idCardUrl, "صورة البطاقة")}
+        ${imageBlock(d.plateImageUrl, "صورة اللوحة")}
+      </div>
+    </div>
+  `;
+  openModal("تفاصيل السائق", html, [
+    {label:"تعديل", className:"btn-info", onClick:()=>{ closeModal(); editDriver(id); }},
+    {label:"عرض QR", className:"btn-primary", onClick:()=>{ closeModal(); showDriverQr(id); }},
+    {label:"إغلاق", className:"btn-ghost", onClick: closeModal}
+  ], true);
+}
+
+function editDriver(id){
+  const d = cache.drivers.find(x=>x.id === id);
+  if(!d) return;
+  const html = `
+    <div class="form-field">
+      <label>كود السائق (للعرض فقط)</label>
+      <input type="text" value="${escapeHtml(d.driverCode||"")}" disabled style="background:#f1f4f6;cursor:not-allowed;font-family:monospace;font-weight:700;" />
+    </div>
+    <div class="form-field">
+      <label>الاسم الكامل <span style="color:#c62828;">*</span></label>
+      <input type="text" id="editFullName" value="${escapeHtml(d.fullName||"")}" />
+    </div>
+    <div class="form-field">
+      <label>رقم الهاتف <span style="color:#c62828;">*</span></label>
+      <input type="tel" id="editPhone" value="${escapeHtml(d.phone||"")}" inputmode="numeric" />
+    </div>
+    <div class="form-field">
+      <label>الحالة</label>
+      <select id="editStatus">
+        <option value="enabled" ${d.status!=="disabled"?"selected":""}>مفعّل</option>
+        <option value="disabled" ${d.status==="disabled"?"selected":""}>موقوف</option>
+      </select>
+    </div>
+    <p style="font-size:.82rem;color:#6b7280;margin-top:8px;">
+      ملاحظة: تعديل الكود أو الرابط يتطلب استخدام زر "إعادة توليد" من نافذة QR.
+    </p>
+  `;
+  openModal("تعديل بيانات السائق", html, [
+    {label:"حفظ التعديلات", className:"btn-success", onClick:()=>{
+      const fullName = ($("editFullName").value || "").trim();
+      const phone = ($("editPhone").value || "").trim();
+      const status = $("editStatus").value;
+      if(!fullName || fullName.length < 3){ toast("الاسم غير صالح.", "error"); return; }
+      if(!/^01[0125][0-9]{8}$/.test(phone)){ toast("رقم الهاتف غير صحيح.", "error"); return; }
+      closeModal();
+      saveDriverEdit(id, { fullName, phone, status });
+    }},
+    {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
+  ]);
+}
+
+async function saveDriverEdit(id, data){
+  showLoading(true);
+  try {
+    await db.collection("drivers").doc(id).update({
+      fullName: data.fullName,
+      phone: data.phone,
+      status: data.status,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: auth.currentUser ? auth.currentUser.email : null
+    });
+    await logAdmin("edit_driver", id, { changes: data });
+    toast("تم تحديث بيانات السائق.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل التحديث: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
+}
+
+/* ============================================================
+   حذف السائق مع خيارات
+   ============================================================ */
+function confirmDeleteDriver(id){
+  const d = cache.drivers.find(x=>x.id === id);
+  if(!d) return;
+  const tripsCount = cache.trips.filter(t => t.driverId === id).length;
+  const reportsCount = cache.reports.filter(r => r.driverId === id).length;
+
+  const html = `
+    <p style="margin-bottom:14px;">
+      هل أنت متأكد من حذف السائق <strong>${escapeHtml(d.fullName||"")}</strong> 
+      (<span class="code-pill">${escapeHtml(d.driverCode||"")}</span>)؟
+    </p>
+    <div style="background:#fef3e2;border:1px solid #ffcc80;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:.85rem;color:#7a3c00;">
+      <strong>بيانات مرتبطة:</strong>
+      <ul style="margin-top:6px;padding-inline-start:20px;">
+        <li>${tripsCount} رحلة</li>
+        <li>${reportsCount} بلاغ</li>
+        <li>طلب التسجيل الأصلي</li>
+      </ul>
+    </div>
+
+    <p style="font-weight:700;margin-bottom:10px;">اختر نوع الحذف:</p>
+    <div class="radio-group">
+      <label class="radio-option">
+        <input type="radio" name="deleteMode" value="full" checked />
+        <span class="txt">
+          <strong>حذف كامل</strong>
+          <small>حذف السائق + الرحلات + البلاغات + طلب التسجيل. لا يمكن التراجع.</small>
+        </span>
+      </label>
+
+      <label class="radio-option">
+        <input type="radio" name="deleteMode" value="keep_records" />
+        <span class="txt">
+          <strong>حذف السجل فقط (الاحتفاظ بالرحلات والبلاغات)</strong>
+          <small>سيُحذف السائق وطلب التسجيل، لكن الرحلات والبلاغات تبقى في النظام لأغراض الإحصاء.</small>
+        </span>
+      </label>
+
+      <label class="radio-option">
+        <input type="radio" name="deleteMode" value="keep_all" />
+        <span class="txt">
+          <strong>حذف السجل فقط (الاحتفاظ بكل شيء)</strong>
+          <small>سيُحذف السائق وطلب التسجيل فقط، مع بقاء الرحلات والبلاغات.</small>
+        </span>
+      </label>
+    </div>
+  `;
+
+  openModal("حذف السائق — اختر الطريقة", html, [
+    {label:"تأكيد الحذف", className:"btn-danger", onClick:()=>{
+      const mode = document.querySelector('input[name="deleteMode"]:checked').value;
+      closeModal();
+      deleteDriver(id, mode);
+    }},
+    {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
+  ], true);
+}
+
+async function deleteDriver(driverId, mode){
+  showLoading(true);
+  try {
+    const d = cache.drivers.find(x=>x.id === driverId);
+    const driverCode = d ? d.driverCode : null;
+    const fullName = d ? d.fullName : null;
+
+    // 1) حذف السائق
+    await db.collection("drivers").doc(driverId).delete();
+
+    // 2) حذف طلب التسجيل المرتبط (لو موجود)
+    const reqSnap = await db.collection("driverRequests")
+      .where("driverId", "==", driverId).get();
+    if(!reqSnap.empty){
+      const b = db.batch();
+      reqSnap.docs.forEach(doc => b.delete(doc.ref));
+      await b.commit();
+    }
+    // كمان نحاول نحذف الطلب بكود السائق (لو لسه مش متربط)
+    if(driverCode){
+      const reqByCode = await db.collection("driverRequests")
+        .where("pendingDriverCode", "==", driverCode).get();
+      if(!reqByCode.empty){
+        const b = db.batch();
+        reqByCode.docs.forEach(doc => b.delete(doc.ref));
+        await b.commit();
+      }
+    }
+
+    // 3) لو "حذف كامل" → نحذف الرحلات والبلاغات
+    if(mode === "full"){
+      // الرحلات
+      const tripsSnap = await db.collection("trips")
+        .where("driverId", "==", driverId).get();
+      if(!tripsSnap.empty){
+        // نستخدم batches صغيرة (500 لكل batch)
+        for(let i = 0; i < tripsSnap.docs.length; i += 500){
+          const b = db.batch();
+          tripsSnap.docs.slice(i, i+500).forEach(doc => b.delete(doc.ref));
+          await b.commit();
+        }
+      }
+
+      // البلاغات
+      const reportsSnap = await db.collection("reports")
+        .where("driverId", "==", driverId).get();
+      if(!reportsSnap.empty){
+        for(let i = 0; i < reportsSnap.docs.length; i += 500){
+          const b = db.batch();
+          reportsSnap.docs.slice(i, i+500).forEach(doc => b.delete(doc.ref));
+          await b.commit();
+        }
+      }
+    }
+
+    await logAdmin("delete_driver", driverId, { driverCode, fullName, mode });
+    toast("تم حذف السائق بنجاح.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل الحذف: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
+}
+
+function showDriverQr(id){
+  const d = cache.drivers.find(x=>x.id === id);
+  if(!d) return;
+  const qrContent = d.qrPayload || buildPassengerUrl(d.driverCode || "");
+  const img = qrImageUrl(qrContent, 260);
+  const html = `
+    <div class="qr-box">
+      <img id="qrImg" src="${img}" alt="QR" />
+      <div class="id">${escapeHtml(qrContent || "")}</div>
+    </div>
+    <p style="margin-top:12px;font-size:.85rem;color:#6b7280;text-align:center;">
+      عند مسح الكود بكاميرا الهاتف، يفتح رابط صفحة الراكب مباشرة مع بيانات السائق.
+    </p>
+  `;
+  openModal("QR — " + escapeHtml(d.fullName||""), html, [
+    {label:"تحميل PNG", className:"btn-primary", onClick:()=>downloadQr(d)},
+    {label:"طباعة ملصق", className:"btn-ghost", onClick:()=>printQr(d)},
+    {label:"فتح الرابط", className:"btn-ghost", onClick:()=>window.open(qrContent, "_blank")},
+    {label:"إعادة توليد", className:"btn-warn", onClick:()=>regenerateQr(id)},
+    {label:"إغلاق", className:"btn-ghost", onClick: closeModal}
+  ]);
+}
+
+function downloadQr(d){
+  const qrContent = d.qrPayload || buildPassengerUrl(d.driverCode || "");
+  const url = qrImageUrl(qrContent, 600);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${d.driverCode || "driver"}-qr.png`;
+  a.target = "_blank";
+  a.click();
+}
+
+function printQr(d){
+  const qrContent = d.qrPayload || buildPassengerUrl(d.driverCode || "");
+  const url = qrImageUrl(qrContent, 400);
+  const area = $("printArea");
+  area.innerHTML = `
+    <div style="background:#fff;border:2px dashed #0b6b52;border-radius:12px;padding:22px;text-align:center;max-width:320px;margin:0 auto;">
+      <div style="display:flex;align-items:center;gap:8px;justify-content:center;font-weight:700;color:#0b6b52;margin-bottom:12px;">
+        <span style="width:24px;height:24px;background:#f4b400;border-radius:6px 6px 50% 50%;clip-path:polygon(50% 0,100% 20%,100% 70%,50% 100%,0 70%,0 20%);"></span>
+        لزقة أمان
+      </div>
+      <img src="${url}" alt="QR" style="max-width:200px;margin:8px auto;display:block;" />
+      <div style="font-family:monospace;font-weight:700;font-size:1.1rem;margin-top:8px;">${escapeHtml(d.driverCode||"")}</div>
+      <div style="font-size:.82rem;color:#6b7280;margin-top:8px;line-height:1.5;">
+        امسح الكود بكاميرا هاتفك<br>
+        لتفتح صفحة التحقق من السائق وبدء الرحلة
+      </div>
+    </div>
+  `;
+  area.style.display = "block";
+  setTimeout(()=>{
+    window.print();
+    area.style.display = "none";
+  }, 400);
+}
+
+async function regenerateQr(id){
+  if(!confirm("سيتم توليد كود QR جديد وإبطال القديم. متابعة؟")) return;
+  const d = cache.drivers.find(x=>x.id === id);
+  if(!d) return;
+  showLoading(true);
+  try{
+    const newCode = await generateUniqueDriverCode();
+    const newPayload = buildPassengerUrl(newCode);
+    await db.collection("drivers").doc(id).update({
+      driverCode: newCode,
+      qrPayload: newPayload,
+      qrUrl: newPayload,
+      qrRegeneratedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      previousCodes: firebase.firestore.FieldValue.arrayUnion(d.driverCode || "")
+    });
+    await logAdmin("regenerate_qr", id, { oldCode: d.driverCode, newCode });
+    toast("تم توليد QR جديد. الكود: " + newCode, "success");
+    closeModal();
+  } catch(err){
+    console.error(err);
+    toast("فشل توليد QR: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function toggleDriver(id, enable){
+  const d = cache.drivers.find(x=>x.id === id);
+  if(!d) return;
+  const ok = confirm(enable ? "تفعيل السائق؟" : "إيقاف السائق؟ سيُمنع من بدء رحلات جديدة.");
+  if(!ok) return;
+  showLoading(true);
+  try{
+    await db.collection("drivers").doc(id).update({
+      status: enable ? "enabled" : "disabled",
+      statusUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await logAdmin(enable ? "enable_driver" : "disable_driver", id, { driverCode: d.driverCode });
+    toast(enable ? "تم التفعيل." : "تم الإيقاف.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل التحديث: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
+}
+
+function showDriverTrips(driverId){
+  const d = cache.drivers.find(x=>x.id === driverId);
+  const trips = cache.trips.filter(t => t.driverId === driverId);
+  const html = trips.length === 0
+    ? `<p class="empty"><p>لا توجد رحلات لهذا السائق.</p></p>`
+    : `<div class="table-wrap"><table class="tbl"><thead><tr><th>كود الرحلة</th><th>البداية</th><th>النهاية</th><th>الحالة</th></tr></thead>
+      <tbody>${trips.map(t=>`
+        <tr>
+          <td><span class="code-pill">${escapeHtml(t.tripCode || t.id)}</span></td>
+          <td>${fmtDate(t.startTime || t.createdAt)}</td>
+          <td>${fmtDate(t.endTime)}</td>
+          <td><span class="badge-status ${escapeHtml(t.status||"active")}">${statusLabel(t.status)}</span></td>
+        </tr>`).join("")}</tbody></table></div>`;
+  openModal("رحلات السائق — " + escapeHtml(d ? d.fullName : ""), html, [
+    {label:"إغلاق", className:"btn-ghost", onClick: closeModal}
+  ], true);
+}
+
+/* ============================================================
+   QR Page
+   ============================================================ */
+function renderQR(){
+  const q = ($("qrSearch").value || "").trim().toLowerCase();
+  let list = cache.drivers.slice();
+  if(q) list = list.filter(d =>
+    (d.fullName||"").toLowerCase().includes(q) || (d.driverCode||"").toLowerCase().includes(q));
+  const tbody = $("qrBody");
+  if(list.length === 0){
+    tbody.innerHTML = `<tr><td colspan="5" class="empty"><p>لا توجد أكواد</p></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(d=>{
+    const qrContent = d.qrPayload || buildPassengerUrl(d.driverCode || "");
+    return `
+    <tr>
+      <td><span class="code-pill">${escapeHtml(d.driverCode||"—")}</span></td>
+      <td>${escapeHtml(d.fullName||"—")}</td>
+      <td style="font-family:monospace;font-size:.72rem;word-break:break-all;max-width:220px;">${escapeHtml(qrContent||"—")}</td>
+      <td><img src="${qrImageUrl(qrContent, 70)}" style="width:44px;height:44px;border-radius:6px;" /></td>
+      <td class="actions">
+        <button class="btn btn-ghost btn-sm" data-act="view" data-id="${d.id}">معاينة</button>
+        <button class="btn btn-primary btn-sm" data-act="dl" data-id="${d.id}">تحميل</button>
+        <button class="btn btn-ghost btn-sm" data-act="print" data-id="${d.id}">طباعة</button>
+      </td>
+    </tr>`;
+  }).join("");
+  tbody.querySelectorAll("button[data-act]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const act = btn.dataset.act;
+      const id = btn.dataset.id;
+      const d = cache.drivers.find(x=>x.id === id);
+      if(!d) return;
+      if(act === "view") showDriverQr(id);
+      else if(act === "dl") downloadQr(d);
+      else if(act === "print") printQr(d);
+    });
+  });
+}
+$("qrSearch").addEventListener("input", renderQR);
+
+/* ============================================================
+   Trips
+   ============================================================ */
+function filteredTrips(){
+  const q = ($("tripSearch").value || "").trim().toLowerCase();
+  const st = $("tripStatus").value;
+  let list = cache.trips.slice();
+  if(q) list = list.filter(t =>
+    (t.tripCode||"").toLowerCase().includes(q) ||
+    (t.driverId||"").toLowerCase().includes(q) ||
+    (t.driverCode||"").toLowerCase().includes(q));
+  if(st) list = list.filter(t => t.status === st);
+  return list;
+}
+
+function renderTrips(){
+  const list = filteredTrips();
+  const tbody = $("tripsBody");
+  if(list.length === 0){
+    tbody.innerHTML = `<tr><td colspan="8" class="empty"><p>لا توجد رحلات</p></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(t=>{
+    const pointsCount = (t.locationPath && t.locationPath.length) || 0;
+    return `
+    <tr>
+      <td><span class="code-pill">${escapeHtml(t.tripCode || t.id)}</span></td>
+      <td>${escapeHtml(driverName(t.driverId) || t.driverName || t.driverCode || "—")}</td>
+      <td>${fmtDate(t.startTime || t.createdAt)}</td>
+      <td>${fmtDate(t.endTime)}</td>
+      <td>${fmtDuration(t.startTime, t.endTime)}</td>
+      <td>${pointsCount}</td>
+      <td><span class="badge-status ${escapeHtml(t.status||"active")}">${statusLabel(t.status)}</span></td>
+      <td class="actions">
+        <button class="btn btn-ghost btn-sm" data-act="v" data-id="${t.id}">عرض</button>
+        <button class="btn btn-info btn-sm" data-act="map" data-id="${t.id}">📍 المسار</button>
+        <button class="btn btn-danger btn-sm" data-act="del" data-id="${t.id}">حذف</button>
+      </td>
+    </tr>`;
+  }).join("");
+  tbody.querySelectorAll("button[data-act]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const id = btn.dataset.id;
+      const act = btn.dataset.act;
+      if(act === "v") viewTrip(id);
+      else if(act === "map") openTripMap(id);
+      else if(act === "del") confirmDeleteTrip(id);
+    });
+  });
+}
+
+$("tripSearch").addEventListener("input", renderTrips);
+$("tripStatus").addEventListener("change", renderTrips);
+
+function viewTrip(id){
+  const t = cache.trips.find(x=>x.id === id);
+  if(!t) return;
+  const pointsCount = (t.locationPath && t.locationPath.length) || 0;
+  const html = `
+    <div class="detail-row"><span class="lbl">كود الرحلة:</span><span class="val"><span class="code-pill">${escapeHtml(t.tripCode || t.id)}</span></span></div>
+    <div class="detail-row"><span class="lbl">السائق:</span><span class="val">${escapeHtml(driverName(t.driverId) || t.driverName || "—")}</span></div>
+    <div class="detail-row"><span class="lbl">هاتف السائق:</span><span class="val">${escapeHtml(t.driverPhone || "—")}</span></div>
+    <div class="detail-row"><span class="lbl">كود السائق:</span><span class="val"><span class="code-pill">${escapeHtml(t.driverCode || "—")}</span></span></div>
+    <div class="detail-row"><span class="lbl">البداية:</span><span class="val">${fmtDate(t.startTime || t.createdAt)}</span></div>
+    <div class="detail-row"><span class="lbl">النهاية:</span><span class="val">${fmtDate(t.endTime)}</span></div>
+    <div class="detail-row"><span class="lbl">المدة:</span><span class="val">${fmtDuration(t.startTime, t.endTime)}</span></div>
+    <div class="detail-row"><span class="lbl">عدد النقاط:</span><span class="val">${pointsCount}</span></div>
+    ${t.startLocation ? `<div class="detail-row"><span class="lbl">موقع البداية:</span><span class="val" style="font-family:monospace;font-size:.82rem;">${t.startLocation.lat.toFixed(5)}, ${t.startLocation.lng.toFixed(5)}</span></div>` : ""}
+    ${t.endLocation ? `<div class="detail-row"><span class="lbl">موقع النهاية:</span><span class="val" style="font-family:monospace;font-size:.82rem;">${t.endLocation.lat.toFixed(5)}, ${t.endLocation.lng.toFixed(5)}</span></div>` : ""}
+    <div class="detail-row"><span class="lbl">الحالة:</span><span class="val"><span class="badge-status ${escapeHtml(t.status||"active")}">${statusLabel(t.status)}</span></span></div>
+  `;
+  openModal("تفاصيل الرحلة", html, [
+    pointsCount > 0 ? {label:"📍 عرض المسار", className:"btn-info", onClick:()=>{ closeModal(); openTripMap(id); }} : null,
+    {label:"إغلاق", className:"btn-ghost", onClick: closeModal}
+  ].filter(Boolean), true);
+}
+
+let activeMap = null;
+function openTripMap(id){
+  const t = cache.trips.find(x=>x.id === id);
+  if(!t) return;
+  const path = t.locationPath || [];
+  if(path.length === 0){
+    openModal("مسار الرحلة", `<p class="empty"><p>لا توجد بيانات موقع لهذه الرحلة.</p></p>`, [
+      {label:"إغلاق", className:"btn-ghost", onClick: closeModal}
+    ], true);
+    return;
+  }
+
+  const html = `
+    <div class="map-info-bar">
+      <div class="item"><span class="dot green"></span> البداية: <span style="font-family:monospace;">${path[0].lat.toFixed(5)}, ${path[0].lng.toFixed(5)}</span></div>
+      <div class="item"><span class="dot red"></span> النهاية: <span style="font-family:monospace;">${path[path.length-1].lat.toFixed(5)}, ${path[path.length-1].lng.toFixed(5)}</span></div>
+      <div class="item"><span class="dot blue"></span> عدد النقاط: ${path.length}</div>
+    </div>
+    <div id="mapContainer"></div>
+    <p style="margin-top:10px;font-size:.8rem;color:#6b7280;text-align:center;">
+      المسار معروض على خريطة CARTO — مجانًا بدون مفاتيح API.
+    </p>
+  `;
+  openModal("📍 مسار الرحلة — " + escapeHtml(t.tripCode || t.id), html, [
+    {label:"فتح في Google Maps", className:"btn-ghost", onClick:()=>{
+      const center = path[Math.floor(path.length/2)];
+      window.open(`https://www.google.com/maps?q=${center.lat},${center.lng}`, "_blank");
+    }},
+    {label:"إغلاق", className:"btn-ghost", onClick: ()=>{ closeModal(); }}
+  ], true);
+
+  setTimeout(()=>{
+    try {
+      if(activeMap){ try{ activeMap.remove(); }catch(_){} activeMap = null; }
+      const container = document.getElementById("mapContainer");
+      if(!container) return;
+
+      const map = L.map(container);
+      activeMap = map;
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 20, subdomains: 'abcd',
+        attribution: '&copy; OpenStreetMap &copy; CARTO'
+      }).addTo(map);
+
+      const latlngs = path.map(p => [p.lat, p.lng]);
+      const polyline = L.polyline(latlngs, { color: '#1565c0', weight: 5, opacity: 0.85 }).addTo(map);
+
+      const startIcon = L.divIcon({
+        className: 'custom-marker',
+        html: '<div style="background:#2e7d32;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);"></div>',
+        iconSize: [18,18], iconAnchor: [9,9]
+      });
+      L.marker(latlngs[0], { icon: startIcon }).addTo(map).bindPopup("🟢 البداية");
+
+      if(latlngs.length > 1){
+        const endIcon = L.divIcon({
+          className: 'custom-marker',
+          html: '<div style="background:#c62828;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);"></div>',
+          iconSize: [18,18], iconAnchor: [9,9]
+        });
+        L.marker(latlngs[latlngs.length-1], { icon: endIcon }).addTo(map).bindPopup("🔴 النهاية");
+      }
+
+      map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
+      setTimeout(()=> map.invalidateSize(), 200);
+    } catch(err){
+      console.error("map error", err);
+    }
+  }, 250);
+}
+
+function confirmDeleteTrip(id){
+  const t = cache.trips.find(x=>x.id === id);
+  if(!t) return;
+  const reportsCount = cache.reports.filter(r => r.tripCode === t.tripCode).length;
+  openModal("تأكيد حذف الرحلة",
+    `<p>هل أنت متأكد من حذف الرحلة <strong>${escapeHtml(t.tripCode || t.id)}</strong>؟</p>
+     <p style="margin-top:10px;color:#c62828;font-size:.85rem;">⚠️ لا يمكن التراجع.</p>
+     ${reportsCount > 0 ? `<p style="margin-top:8px;color:#6b7280;font-size:.85rem;">عدد البلاغات المرتبطة: <strong>${reportsCount}</strong> — لن تُحذف تلقائيًا.</p>` : ""}`,
+    [
+      {label:"تأكيد الحذف", className:"btn-danger", onClick:()=>{ closeModal(); deleteTrip(id); }},
+      {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
+    ]);
+}
+
+async function deleteTrip(id){
+  showLoading(true);
+  try {
+    const t = cache.trips.find(x=>x.id === id);
+    await db.collection("trips").doc(id).delete();
+    await logAdmin("delete_trip", id, { tripCode: t ? t.tripCode : null });
+    toast("تم حذف الرحلة.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل الحذف: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
+}
+
+$("exportTripsBtn").addEventListener("click", ()=>{
+  const list = filteredTrips();
+  if(list.length === 0){ toast("لا توجد رحلات للتصدير.", "info"); return; }
+  const headers = ["tripCode","driverCode","driverName","startTime","endTime","duration","points","status"];
+  const rows = list.map(t=>[
+    t.tripCode || t.id,
+    t.driverCode || "",
+    driverName(t.driverId) || t.driverName || "",
+    t.startTime && t.startTime.toDate ? t.startTime.toDate().toISOString() : "",
+    t.endTime && t.endTime.toDate ? t.endTime.toDate().toISOString() : "",
+    fmtDuration(t.startTime, t.endTime),
+    (t.locationPath && t.locationPath.length) || 0,
+    t.status || ""
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `trips-${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast("تم تصدير الملف.", "success");
+});
+
+/* ============================================================
+   Reports
+   ============================================================ */
+function filteredReports(){
+  const q = ($("repSearch").value || "").trim().toLowerCase();
+  const st = $("repStatus").value;
+  let list = cache.reports.slice();
+  if(q) list = list.filter(r =>
+    (r.description || "").toLowerCase().includes(q) ||
+    (r.category || "").toLowerCase().includes(q));
+  if(st) list = list.filter(r => r.status === st);
+  return list;
+}
+
+function renderReports(){
+  const list = filteredReports();
+  const tbody = $("reportsBody");
+  if(list.length === 0){
+    tbody.innerHTML = `<tr><td colspan="7" class="empty"><p>لا توجد بلاغات</p></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(r=>`
+    <tr>
+      <td style="font-family:monospace;font-size:.78rem;">${escapeHtml((r.reportId || r.id).slice(0,10))}</td>
+      <td>${r.tripCode ? `<span class="code-pill">${escapeHtml(r.tripCode)}</span>` : "—"}</td>
+      <td>${escapeHtml(r.category || "—")}</td>
+      <td style="max-width:280px;">${escapeHtml((r.description||"").slice(0,80))}${(r.description||"").length>80?"...":""}</td>
+      <td>${fmtDate(r.createdAt)}</td>
+      <td><span class="badge-status ${escapeHtml(r.status||"new")}">${statusLabel(r.status||"new")}</span></td>
+      <td class="actions">
+        <button class="btn btn-ghost btn-sm" data-act="view" data-id="${r.id}">تفاصيل</button>
+        <button class="btn btn-ghost btn-sm" data-act="status" data-id="${r.id}">تحديث</button>
+        <button class="btn btn-danger btn-sm" data-act="delete" data-id="${r.id}">حذف</button>
+      </td>
+    </tr>
+  `).join("");
+  tbody.querySelectorAll("button[data-act]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const id = btn.dataset.id;
+      const act = btn.dataset.act;
+      if(act === "view") viewReport(id);
+      else if(act === "status") updateReportStatus(id);
+      else if(act === "delete") confirmDeleteReport(id);
+    });
+  });
+}
+$("repSearch").addEventListener("input", renderReports);
+$("repStatus").addEventListener("change", renderReports);
+
+function viewReport(id){
+  const r = cache.reports.find(x=>x.id === id);
+  if(!r) return;
+  const html = `
+    <div class="detail-row"><span class="lbl">رقم البلاغ:</span><span class="val" style="font-family:monospace;">${escapeHtml(r.reportId || r.id)}</span></div>
+    <div class="detail-row"><span class="lbl">كود الرحلة:</span><span class="val">${r.tripCode ? `<span class="code-pill">${escapeHtml(r.tripCode)}</span>` : "—"}</span></div>
+    <div class="detail-row"><span class="lbl">كود السائق:</span><span class="val">${r.driverCode ? `<span class="code-pill">${escapeHtml(r.driverCode)}</span>` : "—"}</span></div>
+    <div class="detail-row"><span class="lbl">التصنيف:</span><span class="val">${escapeHtml(r.category || "—")}</span></div>
+    <div class="detail-row"><span class="lbl">الوصف:</span><span class="val">${escapeHtml(r.description || "—")}</span></div>
+    <div class="detail-row"><span class="lbl">هاتف الراكب:</span><span class="val">${escapeHtml(r.contactPhone || "—")}</span></div>
+    <div class="detail-row"><span class="lbl">الحالة:</span><span class="val"><span class="badge-status ${escapeHtml(r.status||"new")}">${statusLabel(r.status||"new")}</span></span></div>
+    <div class="detail-row"><span class="lbl">تاريخ التقديم:</span><span class="val">${fmtDate(r.createdAt)}</span></div>
+    ${r.adminNote ? `<div class="detail-row"><span class="lbl">ملاحظة الأدمن:</span><span class="val">${escapeHtml(r.adminNote)}</span></div>` : ""}
+  `;
+  openModal("تفاصيل البلاغ", html, [
+    {label:"تحديث الحالة", className:"btn-primary", onClick:()=>{ closeModal(); updateReportStatus(id); }},
+    {label:"حذف", className:"btn-danger", onClick:()=>{ closeModal(); confirmDeleteReport(id); }},
+    {label:"إغلاق", className:"btn-ghost", onClick: closeModal}
+  ], true);
+}
+
+function confirmDeleteReport(id){
+  const r = cache.reports.find(x=>x.id === id);
+  if(!r) return;
+  openModal("تأكيد حذف البلاغ",
+    `<p>هل أنت متأكد من حذف البلاغ <strong>${escapeHtml(r.reportId || r.id)}</strong>؟</p>
+     <p style="margin-top:10px;color:#c62828;font-size:.85rem;">⚠️ لا يمكن التراجع.</p>`,
+    [
+      {label:"تأكيد الحذف", className:"btn-danger", onClick:()=>{ closeModal(); deleteReport(id); }},
+      {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
+    ]);
+}
+
+async function deleteReport(id){
+  showLoading(true);
+  try {
+    await db.collection("reports").doc(id).delete();
+    await logAdmin("delete_report", id, {});
+    toast("تم حذف البلاغ.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل الحذف: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
+}
+
+function updateReportStatus(id){
+  const r = cache.reports.find(x=>x.id === id);
+  if(!r) return;
+  const html = `
+    <div class="form-field">
+      <label>الحالة الجديدة:</label>
+      <select id="newReportStatus">
+        <option value="new" ${r.status==="new"?"selected":""}>جديد</option>
+        <option value="under_review" ${r.status==="under_review"?"selected":""}>قيد المراجعة</option>
+        <option value="resolved" ${r.status==="resolved"?"selected":""}>تم الحل</option>
+      </select>
+    </div>
+    <div class="form-field">
+      <label>ملاحظة الأدمن (اختياري):</label>
+      <textarea id="reportNote" rows="3">${escapeHtml(r.adminNote||"")}</textarea>
+    </div>
+  `;
+  openModal("تحديث حالة البلاغ", html, [
+    {label:"حفظ", className:"btn-primary", onClick: async ()=>{
+      const status = $("newReportStatus").value;
+      const note = ($("reportNote").value || "").trim();
+      closeModal();
+      showLoading(true);
+      try{
+        await db.collection("reports").doc(id).update({
+          status,
+          adminNote: note || null,
+          statusUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          statusUpdatedBy: auth.currentUser ? auth.currentUser.email : null
+        });
+        await logAdmin("update_report", id, { status });
+        toast("تم تحديث حالة البلاغ.", "success");
+      } catch(err){
+        toast("فشل التحديث: " + err.message, "error");
+      } finally {
+        showLoading(false);
+      }
+    }},
+    {label:"إلغاء", className:"btn-ghost", onClick: closeModal}
+  ]);
+}
+
+/* ============================================================
+   Logs
+   ============================================================ */
+function renderLogs(){
+  const tbody = $("logsBody");
+  if(cache.logs.length === 0){
+    tbody.innerHTML = `<tr><td colspan="4" class="empty"><p>لا توجد سجلات</p></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = cache.logs.map(l=>`
+    <tr>
+      <td>${fmtDate(l.createdAt)}</td>
+      <td>${escapeHtml(actionLabel(l.action))}</td>
+      <td>${escapeHtml(l.adminEmail || "—")}</td>
+      <td style="font-family:monospace;font-size:.78rem;">${escapeHtml(l.refId || "—")}</td>
+    </tr>
+  `).join("");
+}
+
+$("clearAllLogsBtn").addEventListener("click", async ()=>{
+  if(!confirm("سيتم حذف جميع سجلات الإجراءات نهائيًا. متابعة؟")) return;
+  showLoading(true);
+  try {
+    const snap = await db.collection("adminLogs").get();
+    const docs = snap.docs;
+    for(let i = 0; i < docs.length; i += 500){
+      const b = db.batch();
+      docs.slice(i, i+500).forEach(doc => b.delete(doc.ref));
+      await b.commit();
+    }
+    toast("تم حذف جميع السجلات.", "success");
+  } catch(err){
+    console.error(err);
+    toast("فشل الحذف: " + err.message, "error");
+  } finally {
+    showLoading(false);
+  }
+});
+
+function actionLabel(a){
+  const map = {
+    approve_request:"قبول طلب تسجيل",
+    reject_request:"رفض طلب تسجيل",
+    delete_request:"حذف طلب تسجيل",
+    edit_driver:"تعديل سائق",
+    delete_driver:"حذف سائق",
+    enable_driver:"تفعيل سائق",
+    disable_driver:"إيقاف سائق",
+    regenerate_qr:"إعادة توليد QR",
+    delete_trip:"حذف رحلة",
+    update_report:"تحديث بلاغ",
+    delete_report:"حذف بلاغ"
+  };
+  return map[a] || a || "—";
+}
+</script>
+</body>
+</html>
